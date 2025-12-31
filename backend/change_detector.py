@@ -1,11 +1,14 @@
 import pandas as pd
 from typing import Dict, List, Tuple
 from datetime import datetime
+from backend.logger import get_logger
 
 
 class ChangeDetector:
     def __init__(self):
+        self.logger = get_logger()
         self.change_types = ['insertion', 'deletion', 'modification']
+        self.logger.debug("ChangeDetector initialise")
 
     def detect_changes_for_list(self, old_df: pd.DataFrame, new_df: pd.DataFrame, list_name: str) -> pd.DataFrame:
         changes = []
@@ -88,16 +91,22 @@ class ChangeDetector:
 
     def detect_all_changes(self, old_lists: Dict[str, pd.DataFrame],
                           new_lists: Dict[str, pd.DataFrame]) -> pd.DataFrame:
+        self.logger.info(f"Detection des changements pour {len(new_lists)} listes")
         all_changes = []
 
         for list_name in new_lists.keys():
             old_df = old_lists.get(list_name, pd.DataFrame())
             new_df = new_lists[list_name]
 
+            self.logger.debug(f"Detection pour {list_name}: {len(old_df)} -> {len(new_df)} enregistrements")
             changes_df = self.detect_changes_for_list(old_df, new_df, list_name)
             if not changes_df.empty:
                 all_changes.append(changes_df)
+                self.logger.info(f"{len(changes_df)} changements detectes pour {list_name}")
 
         if all_changes:
-            return pd.concat(all_changes, ignore_index=True)
+            total_changes = pd.concat(all_changes, ignore_index=True)
+            self.logger.info(f"Total: {len(total_changes)} changements detectes")
+            return total_changes
+        self.logger.info("Aucun changement detecte")
         return pd.DataFrame()
