@@ -48,10 +48,29 @@ class DataManager:
         aggregated_df = pd.concat(aggregated_frames, ignore_index=True)
         return aggregated_df
 
-    def save_aggregated_data(self, df: pd.DataFrame) -> None:
+    def save_aggregated_data(self, df: pd.DataFrame, force: bool = False) -> bool:
         output_path = Path(self.config['output_files']['aggregated_data'])
+
+        if not force and output_path.exists():
+            old_df = pd.read_excel(output_path)
+            if self._dataframes_are_equal(old_df, df):
+                return False
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_excel(output_path, index=False)
+        return True
+
+    def _dataframes_are_equal(self, df1: pd.DataFrame, df2: pd.DataFrame) -> bool:
+        if df1.shape != df2.shape:
+            return False
+
+        if list(df1.columns) != list(df2.columns):
+            return False
+
+        df1_sorted = df1.sort_values(by=list(df1.columns)).reset_index(drop=True)
+        df2_sorted = df2.sort_values(by=list(df2.columns)).reset_index(drop=True)
+
+        return df1_sorted.equals(df2_sorted)
 
     def load_aggregated_data(self) -> pd.DataFrame:
         output_path = Path(self.config['output_files']['aggregated_data'])

@@ -206,9 +206,12 @@ def display_update_section(data_manager, change_detector, history_manager):
                 old_aggregated = data_manager.load_aggregated_data()
 
                 aggregated_df = data_manager.aggregate_all_data()
-                data_manager.save_aggregated_data(aggregated_df)
+                was_saved = data_manager.save_aggregated_data(aggregated_df)
 
-                st.success(f"Données agrégées avec succès! {len(aggregated_df)} enregistrements chargés.")
+                if was_saved:
+                    st.success(f"Données agrégées et sauvegardées avec succès! {len(aggregated_df)} enregistrements chargés.")
+                else:
+                    st.info(f"Données agrégées ({len(aggregated_df)} enregistrements). Aucun changement détecté, fichier non modifié.")
 
                 if not old_aggregated.empty:
                     with st.spinner("Détection des changements..."):
