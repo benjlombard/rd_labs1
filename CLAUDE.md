@@ -22,6 +22,7 @@
    - [FEAT-05: Analyse de Risque](#feat-05-analyse-de-risque)
    - [FEAT-06: Système d'Alertes](#feat-06-système-dalertes)
    - [FEAT-07: Timestamps et Tracking](#feat-07-timestamps-et-tracking)
+   - [FEAT-08: Graphiques Radar des Scores](#feat-08-graphiques-radar-des-scores)
 5. [Installation et Déploiement](#installation-et-déploiement)
 6. [Migration SharePoint](#migration-sharepoint)
 7. [Tests](#tests)
@@ -904,6 +905,302 @@ cols_to_drop = ['source_list', 'created_at', 'updated_at']
 # APRÈS
 cols_to_drop = ['source_list']
 ```
+
+---
+
+## FEAT-08: Graphiques Radar des Scores
+
+**Statut** : ⚙️ OPTIONNEL (actuellement activé)
+
+### Description
+Visualisation graphique des 4 composantes du score de risque sous forme de graphiques radar (spider charts) pour une compréhension instantanée du profil de risque.
+
+### Fichiers
+- `backend/risk_analyzer.py` (méthodes `generate_radar_chart()` et `generate_comparison_radar_chart()`)
+- `app.py` (section graphiques radar dans onglet "Ma Surveillance")
+
+### Fonctionnalités
+- **Graphique radar individuel** : visualisation du profil de risque d'une substance
+  - 4 axes : Fréquence Modifications, Présence Listes, Type Changement, Récence
+  - Couleur dynamique selon le niveau de risque (🟢🟡🟠🔴)
+  - Légende avec les valeurs exactes
+  - Titre avec score total et niveau
+- **Mode comparaison** : superposition de 2-3 graphiques radar
+  - Sélection multiple de substances
+  - Couleurs différentes par substance
+  - Tableau comparatif des composantes
+  - Identification rapide des différences
+- **Interface intuitive** : 2 onglets dans "Ma Surveillance"
+  - Onglet "Vue Individuelle" : analyse d'une substance
+  - Onglet "Mode Comparaison" : comparaison de plusieurs substances
+- **Informations additionnelles** : affichage des prédictions et anomalies sous le graphique
+
+### Méthodes Principales
+- `generate_radar_chart(score_data, cas_name)` : Génère un graphique radar pour une substance
+- `generate_comparison_radar_chart(scores_data_list, cas_names)` : Génère un graphique comparatif
+
+### Dépendances
+- `matplotlib >= 3.8.0` (déjà installé pour FEAT-01)
+- `numpy` (déjà installé avec pandas)
+- FEAT-04 (Watchlists) **REQUIS**
+- FEAT-05 (Risk Analyzer) **REQUIS**
+
+### Activation
+**Déjà activé par défaut.**
+
+### Désactivation
+
+**⚠️ Attention** : Requiert FEAT-04 et FEAT-05. Si vous désactivez ces fonctionnalités, FEAT-08 sera automatiquement non fonctionnel.
+
+1. **Dans `backend/risk_analyzer.py`**, supprimer les méthodes :
+```python
+# SUPPRIMER generate_radar_chart() entièrement
+# SUPPRIMER generate_comparison_radar_chart() entièrement
+```
+
+2. **Dans `backend/risk_analyzer.py`**, retirer les imports :
+```python
+# SUPPRIMER
+import numpy as np
+import matplotlib.pyplot as plt
+from io import BytesIO
+```
+
+3. **Dans `app.py`**, retirer l'import matplotlib :
+```python
+# SUPPRIMER
+import matplotlib.pyplot as plt
+```
+
+4. **Dans `app.py`**, fonction `display_watchlist_surveillance()`, supprimer la section complète :
+```python
+# SUPPRIMER tout le bloc (lignes ~808-917)
+# Section Graphiques Radar
+st.divider()
+st.subheader("📊 Graphiques Radar des Scores")
+...
+# (jusqu'à la fin de la section avant "Option de retirer une substance")
+```
+
+### Exemple de Visualisation
+
+**Vue Individuelle** :
+- Polygone coloré avec 4 sommets
+- Chaque sommet = une composante du score (0-100)
+- Aire du polygone = profil global de risque
+- Rouge foncé = Critique, Orange = Élevé, Jaune = Moyen, Vert = Faible
+
+**Mode Comparaison** :
+- Plusieurs polygones superposés
+- Comparaison visuelle instantanée
+- Identification des points forts/faibles relatifs
+
+### Bénéfices
+✅ **Compréhension instantanée** : voir le profil en un coup d'œil
+✅ **Comparaison efficace** : identifier les différences rapidement
+✅ **Communication visuelle** : partager l'analyse avec des non-experts
+✅ **Prise de décision** : prioriser les actions sur les substances
+✅ **Effet wow** : interface moderne et professionnelle
+
+---
+
+## FEAT-09: Calendrier Heatmap des Changements
+
+**Statut** : ⚙️ OPTIONNEL (actuellement activé)
+
+### Description
+Visualisation calendaire de l'intensité des changements au fil du temps, inspirée du calendrier de contributions GitHub. Chaque jour est représenté par une case colorée selon le nombre de changements, permettant d'identifier rapidement les patterns d'activité et les périodes critiques.
+
+### Fichiers
+- `backend/risk_analyzer.py` (méthode `generate_calendar_heatmap()`)
+- `app.py` (nouvel onglet "Calendrier" et fonction `display_calendar_heatmap()`)
+
+### Fonctionnalités
+
+#### 1. Calendrier Heatmap Interactif
+- **Format annuel** : 53 semaines × 7 jours (Lundi→Dimanche)
+- **Gradient de couleur** :
+  - Blanc (`#ebedf0`) : 0 changement
+  - Vert clair (`#c6e48b`) : faible activité
+  - Vert moyen (`#7bc96f`) : activité modérée
+  - Vert foncé (`#196127`) : forte activité
+  - Rouge (`#c41e3a`) : activité très intense
+- **Tooltips riches** : survol d'un jour affiche :
+  - Date
+  - Nombre total de changements
+  - Détail par type (insertions, suppressions, modifications)
+
+#### 2. Filtres Dynamiques
+- **Par année** : sélection de l'année à visualiser
+- **Par liste source** : filtrer par testa, testb, testc, testd ou "Toutes"
+- **Par type de changement** : "Tous", insertion, suppression, modification
+
+#### 3. Statistiques Détaillées
+- **Métriques globales** :
+  - Total de changements
+  - Jour le plus actif (nombre max de changements)
+  - Moyenne de changements par jour
+  - Nombre de jours avec activité
+- **Focus sur le jour le plus actif** :
+  - Date et nombre de changements
+  - Répartition par type (insertions, suppressions, modifications)
+  - Codes couleur : ✅ vert (insertions), ❌ rouge (suppressions), ✏️ jaune (modifications)
+- **Top 10 des jours les plus actifs** :
+  - Tableau trié par nombre de changements
+  - Rang, date, et nombre de changements
+
+#### 4. Interface Utilisateur
+- **Onglet dédié** : "📅 Calendrier" dans la navigation principale
+- **Layout responsive** : colonnes pour les filtres (3 colonnes)
+- **Graphique pleine largeur** : utilisation de `use_container_width=True`
+- **Séparateurs visuels** : `st.divider()` pour structurer
+
+### Méthodes Principales
+
+#### `generate_calendar_heatmap(history_df, year, source_list_filter, change_type_filter)`
+Génère un calendrier heatmap avec plotly.
+
+**Paramètres** :
+- `history_df` : DataFrame de l'historique des changements
+- `year` : Année à afficher (défaut : année courante)
+- `source_list_filter` : Filtrer par liste source (optionnel)
+- `change_type_filter` : Filtrer par type de changement (optionnel)
+
+**Retour** :
+- Figure plotly interactive avec heatmap
+
+**Gestion des erreurs** :
+- Historique vide : affiche message "Aucune donnée disponible"
+- Colonne timestamp manquante : log erreur et retourne figure vide
+- Exception : log erreur avec traceback et affiche message d'erreur
+
+#### `display_calendar_heatmap(history_manager, data_manager, risk_analyzer)`
+Affiche l'onglet complet du calendrier heatmap.
+
+**Responsabilités** :
+- Charger l'historique via `history_manager`
+- Créer les filtres interactifs (année, liste, type)
+- Appeler `generate_calendar_heatmap()` avec les filtres
+- Calculer et afficher les statistiques
+- Gérer les erreurs et les cas limites
+
+### Dépendances
+
+**Packages Python** :
+- `plotly >= 6.5.0` (nouvellement ajouté)
+- `pandas >= 2.2.0` (déjà installé)
+- `numpy` (déjà installé avec pandas)
+
+**Fonctionnalités requises** :
+- Historique des changements (`change_history.xlsx`)
+- Module `history_manager.py` **REQUIS**
+
+### Activation
+
+**Déjà activé par défaut.**
+
+La fonctionnalité est automatiquement active si :
+1. Plotly est installé (`pip install plotly`)
+2. Un historique de changements existe dans `data/change_history.xlsx`
+3. L'onglet "Calendrier" est visible dans la navigation
+
+### Désactivation
+
+1. **Dans `app.py`**, retirer "Calendrier" de la liste des onglets (ligne 52) :
+```python
+# AVANT
+tabs = st.tabs(["Données Agrégées", "Historique des Changements", "Tendances", "Ma Surveillance", "Calendrier", "Mise à Jour"])
+
+# APRÈS
+tabs = st.tabs(["Données Agrégées", "Historique des Changements", "Tendances", "Ma Surveillance", "Mise à Jour"])
+```
+
+2. **Dans `app.py`**, supprimer l'appel à `display_calendar_heatmap()` (ligne 66-67) :
+```python
+# SUPPRIMER
+with tabs[4]:
+    display_calendar_heatmap(history_manager, data_manager, risk_analyzer)
+
+# Réindexer tabs[5] → tabs[4] pour "Mise à Jour"
+with tabs[4]:  # ÉTAIT tabs[5]
+    display_update_section(...)
+```
+
+3. **Dans `app.py`**, supprimer la fonction complète `display_calendar_heatmap()` (lignes ~1021-1172)
+
+4. **Dans `app.py`**, retirer l'import plotly (ligne 4) :
+```python
+# SUPPRIMER
+import plotly.graph_objects as go
+```
+
+5. **Dans `backend/risk_analyzer.py`**, supprimer la méthode `generate_calendar_heatmap()` (lignes ~623-813)
+
+6. **Dans `backend/risk_analyzer.py`**, retirer l'import plotly (ligne 9) :
+```python
+# SUPPRIMER
+import plotly.graph_objects as go
+```
+
+7. **Optionnel** : désinstaller plotly si non utilisé ailleurs :
+```bash
+pip uninstall plotly
+pip freeze > requirements.txt
+```
+
+### Exemple de Visualisation
+
+**Calendrier annuel** :
+```
+         S1  S2  S3  S4  S5  ...  S49 S50 S51 S52 S53
+Lundi    🟩  🟩  ⬜  🟩  🟨  ...  🟩  🟥  🟩  ⬜  🟩
+Mardi    ⬜  🟩  🟩  ⬜  🟩  ...  🟩  🟩  🟨  🟩  ⬜
+...
+Dimanche 🟩  ⬜  🟩  🟩  🟩  ...  ⬜  🟩  🟩  🟩  🟩
+```
+
+**Tooltip au survol d'un jour** :
+```
+2025-12-15
+Total: 8 changements
+Insertions: 3
+Suppressions: 2
+Modifications: 3
+```
+
+### Cas d'usage
+
+1. **Identifier les patterns** : Repérer les jours de mise à jour réguliers (ex: tous les mardis)
+2. **Détecter les anomalies** : Visualiser les pics d'activité inhabituels
+3. **Planning** : Anticiper les périodes de forte activité
+4. **Reporting** : Communiquer visuellement l'activité sur une période
+5. **Analyse temporelle** : Comparer l'activité entre différentes années
+6. **Audit** : Vérifier la régularité des mises à jour des listes ECHA
+
+### Bénéfices
+
+✅ **Visuel impactant** : Compréhension immédiate de l'activité annuelle
+✅ **Patterns identifiables** : Repérer facilement les régularités et anomalies
+✅ **Interactif** : Tooltips riches avec détails au survol
+✅ **Flexible** : Filtres par année, liste source, et type de changement
+✅ **Statistiques claires** : Métriques et top 10 pour analyse quantitative
+✅ **Inspiration GitHub** : Interface familière pour les développeurs
+✅ **Aide à la décision** : Planifier les revues et audits selon l'activité
+
+### Performance
+
+- **Optimisé** : Calcul uniquement des données filtrées
+- **Cache** : Plotly utilise le cache navigateur pour les graphiques statiques
+- **Responsive** : Taille adaptative avec `use_container_width=True`
+- **Léger** : Pas de dépendance lourde, plotly est suffisant
+
+### Améliorations Futures Possibles
+
+- [ ] Vue mensuelle détaillée (calendrier classique)
+- [ ] Export de l'image du heatmap en PNG/SVG
+- [ ] Comparaison année sur année (overlay de 2 années)
+- [ ] Annotations manuelles sur des jours spécifiques
+- [ ] Intégration avec FEAT-06 (alertes) : marquer les jours avec alertes
 
 ---
 

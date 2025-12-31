@@ -4,8 +4,12 @@ Calcule des scores de criticité basés sur l'historique et fait des prédiction
 """
 
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
+from io import BytesIO
 from backend.logger import get_logger
 
 logger = get_logger()
@@ -431,3 +435,379 @@ class RiskAnalyzer:
         top_risks = scores_df.nlargest(top_n, 'total_score')
         logger.info(f"Top {top_n} substances à risque identifiées")
         return top_risks
+
+    def generate_radar_chart(self, score_data: Dict, cas_name: str = None) -> plt.Figure:
+        """
+        Génère un graphique radar pour visualiser les 4 composantes du score de risque
+
+        Args:
+            score_data: Dictionnaire retourné par calculate_risk_score()
+            cas_name: Nom de la substance (optionnel, pour le titre)
+
+        Returns:
+            Figure matplotlib du graphique radar
+        """
+        try:
+            # Extraire les composantes du score
+            components = score_data['components']
+            categories = [
+                'Fréquence\nModifications',
+                'Présence\nListes',
+                'Type\nChangement',
+                'Récence'
+            ]
+            values = [
+                components['modification_frequency'],
+                components['list_presence'],
+                components['recent_change_type'],
+                components['recency']
+            ]
+
+            # Nombre de variables
+            num_vars = len(categories)
+
+            # Calculer les angles pour chaque axe
+            angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
+
+            # Fermer le polygone
+            values += values[:1]
+            angles += angles[:1]
+
+            # Créer la figure
+            fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection='polar'))
+
+            # Définir la couleur selon le niveau de risque
+            level = score_data['level']
+            colors = {
+                'Critique': '#d32f2f',   # Rouge
+                'Élevé': '#f57c00',      # Orange
+                'Moyen': '#fbc02d',      # Jaune
+                'Faible': '#388e3c'      # Vert
+            }
+            color = colors.get(level, '#1976d2')
+
+            # Tracer le polygone
+            ax.plot(angles, values, 'o-', linewidth=2, color=color, label=f'Score: {score_data["total_score"]}')
+            ax.fill(angles, values, alpha=0.25, color=color)
+
+            # Configurer les étiquettes des axes
+            ax.set_xticks(angles[:-1])
+            ax.set_xticklabels(categories, size=10)
+
+            # Configurer l'échelle radiale (0-100)
+            ax.set_ylim(0, 100)
+            ax.set_yticks([25, 50, 75, 100])
+            ax.set_yticklabels(['25', '50', '75', '100'], size=8)
+            ax.set_rlabel_position(180 / num_vars)
+
+            # Grille
+            ax.grid(True, linestyle='--', alpha=0.7)
+
+            # Titre
+            title = f"Analyse de Risque"
+            if cas_name:
+                title += f"\n{cas_name}"
+            title += f"\nScore Total: {score_data['total_score']} - {score_data['badge']} {level}"
+
+            plt.title(title, size=14, pad=20, weight='bold')
+
+            # Légende avec les valeurs
+            legend_text = '\n'.join([
+                f"Fréq. Modif.: {components['modification_frequency']:.0f}",
+                f"Présence Listes: {components['list_presence']:.0f}",
+                f"Type Changement: {components['recent_change_type']:.0f}",
+                f"Récence: {components['recency']:.0f}"
+            ])
+
+            ax.text(1.4, 0.5, legend_text, transform=ax.transAxes,
+                   fontsize=9, verticalalignment='center',
+                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.3))
+
+            plt.tight_layout()
+
+            logger.debug(f"Graphique radar généré pour {score_data.get('cas_id', 'unknown')}")
+            return fig
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération du graphique radar: {e}", exc_info=True)
+            # Retourner une figure vide en cas d'erreur
+            fig, ax = plt.subplots(figsize=(8, 8))
+            ax.text(0.5, 0.5, 'Erreur lors de la génération du graphique',
+                   ha='center', va='center', fontsize=12)
+            ax.axis('off')
+            return fig
+
+    def generate_comparison_radar_chart(self, scores_data_list: List[Dict],
+                                       cas_names: List[str] = None) -> plt.Figure:
+        """
+        Génère un graphique radar comparatif pour plusieurs substances
+
+        Args:
+            scores_data_list: Liste de dictionnaires retournés par calculate_risk_score()
+            cas_names: Liste des noms de substances (optionnel)
+
+        Returns:
+            Figure matplotlib du graphique radar comparatif
+        """
+        try:
+            if not scores_data_list or len(scores_data_list) > 3:
+                raise ValueError("Comparaison possible pour 1 à 3 substances uniquement")
+
+            # Catégories
+            categories = [
+                'Fréquence\nModifications',
+                'Présence\nListes',
+                'Type\nChangement',
+                'Récence'
+            ]
+            num_vars = len(categories)
+
+            # Calculer les angles
+            angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
+            angles += angles[:1]
+
+            # Créer la figure
+            fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(projection='polar'))
+
+            # Couleurs pour chaque substance
+            colors_list = ['#d32f2f', '#1976d2', '#388e3c']
+
+            # Tracer chaque substance
+            for idx, score_data in enumerate(scores_data_list):
+                components = score_data['components']
+                values = [
+                    components['modification_frequency'],
+                    components['list_presence'],
+                    components['recent_change_type'],
+                    components['recency']
+                ]
+                values += values[:1]
+
+                # Label
+                label = cas_names[idx] if cas_names and idx < len(cas_names) else f"Substance {idx+1}"
+                label += f" (Score: {score_data['total_score']})"
+
+                # Tracer
+                color = colors_list[idx % len(colors_list)]
+                ax.plot(angles, values, 'o-', linewidth=2, color=color, label=label)
+                ax.fill(angles, values, alpha=0.15, color=color)
+
+            # Configurer les axes
+            ax.set_xticks(angles[:-1])
+            ax.set_xticklabels(categories, size=11)
+            ax.set_ylim(0, 100)
+            ax.set_yticks([25, 50, 75, 100])
+            ax.set_yticklabels(['25', '50', '75', '100'], size=9)
+            ax.set_rlabel_position(180 / num_vars)
+
+            # Grille
+            ax.grid(True, linestyle='--', alpha=0.7)
+
+            # Titre et légende
+            plt.title("Comparaison des Scores de Risque", size=14, pad=20, weight='bold')
+            plt.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=10)
+
+            plt.tight_layout()
+
+            logger.debug(f"Graphique radar comparatif généré pour {len(scores_data_list)} substances")
+            return fig
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération du graphique radar comparatif: {e}", exc_info=True)
+            fig, ax = plt.subplots(figsize=(10, 10))
+            ax.text(0.5, 0.5, f'Erreur: {str(e)}',
+                   ha='center', va='center', fontsize=12)
+            ax.axis('off')
+            return fig
+
+    def generate_calendar_heatmap(self,
+                                   history_df: pd.DataFrame,
+                                   year: int = None,
+                                   source_list_filter: str = None,
+                                   change_type_filter: str = None) -> go.Figure:
+        """
+        Génère un calendrier heatmap interactif des changements (style GitHub contributions)
+
+        Args:
+            history_df: DataFrame de l'historique des changements
+            year: Année à afficher (défaut: année courante)
+            source_list_filter: Filtrer par liste source (optionnel)
+            change_type_filter: Filtrer par type de changement (optionnel)
+
+        Returns:
+            Figure plotly avec le heatmap calendar
+        """
+        try:
+            # Gérer le cas d'un historique vide
+            if history_df.empty:
+                logger.warning("Historique vide, impossible de générer le calendrier heatmap")
+                fig = go.Figure()
+                fig.add_annotation(
+                    text="Aucune donnée disponible",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=20)
+                )
+                return fig
+
+            # Année par défaut
+            if year is None:
+                year = datetime.now().year
+
+            # Copier le DataFrame pour éviter les modifications
+            df = history_df.copy()
+
+            # Convertir timestamp en datetime si nécessaire
+            if 'timestamp' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df['date'] = df['timestamp'].dt.date
+            else:
+                logger.error("Colonne 'timestamp' manquante dans l'historique")
+                return go.Figure()
+
+            # Appliquer les filtres
+            if source_list_filter and source_list_filter != "Toutes":
+                df = df[df['source_list'] == source_list_filter]
+
+            if change_type_filter and change_type_filter != "Tous":
+                df = df[df['change_type'] == change_type_filter]
+
+            # Filtrer par année
+            df = df[df['timestamp'].dt.year == year]
+
+            # Agréger par date
+            daily_counts = df.groupby('date').size().reset_index(name='count')
+
+            # Créer un DataFrame avec toutes les dates de l'année
+            start_date = datetime(year, 1, 1).date()
+            end_date = datetime(year, 12, 31).date()
+            all_dates = pd.date_range(start=start_date, end=end_date, freq='D')
+
+            # DataFrame complet avec toutes les dates
+            full_calendar = pd.DataFrame({'date': all_dates.date})
+            full_calendar = full_calendar.merge(daily_counts, on='date', how='left')
+            full_calendar['count'] = full_calendar['count'].fillna(0).astype(int)
+
+            # Ajouter informations de calendrier
+            full_calendar['date_dt'] = pd.to_datetime(full_calendar['date'])
+            full_calendar['week'] = full_calendar['date_dt'].dt.isocalendar().week
+            full_calendar['weekday'] = full_calendar['date_dt'].dt.dayofweek  # 0=Lundi, 6=Dimanche
+            full_calendar['month'] = full_calendar['date_dt'].dt.month
+            full_calendar['day'] = full_calendar['date_dt'].dt.day
+
+            # Préparer les données pour le heatmap
+            # Format: 7 lignes (jours de la semaine) x 53 colonnes (semaines)
+            weeks = sorted(full_calendar['week'].unique())
+            z_data = []
+            hover_data = []
+
+            weekday_names = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+
+            for weekday in range(7):
+                week_counts = []
+                week_hovers = []
+                for week in weeks:
+                    day_data = full_calendar[(full_calendar['week'] == week) &
+                                             (full_calendar['weekday'] == weekday)]
+                    if not day_data.empty:
+                        count = day_data.iloc[0]['count']
+                        date = day_data.iloc[0]['date']
+                        week_counts.append(count)
+
+                        # Détails pour le tooltip
+                        if count > 0:
+                            day_changes = df[df['date'] == date]
+                            insertions = len(day_changes[day_changes['change_type'] == 'insertion'])
+                            deletions = len(day_changes[day_changes['change_type'] == 'suppression'])
+                            modifications = len(day_changes[day_changes['change_type'] == 'modification'])
+
+                            hover_text = f"<b>{date}</b><br>"
+                            hover_text += f"Total: {count} changement{'s' if count > 1 else ''}<br>"
+                            hover_text += f"Insertions: {insertions}<br>"
+                            hover_text += f"Suppressions: {deletions}<br>"
+                            hover_text += f"Modifications: {modifications}"
+                        else:
+                            hover_text = f"<b>{date}</b><br>Aucun changement"
+
+                        week_hovers.append(hover_text)
+                    else:
+                        week_counts.append(0)
+                        week_hovers.append("")
+
+                z_data.append(week_counts)
+                hover_data.append(week_hovers)
+
+            # Définir le gradient de couleur
+            max_count = full_calendar['count'].max()
+            if max_count == 0:
+                max_count = 1  # Éviter division par zéro
+
+            # Colorscale personnalisée (blanc → vert clair → vert foncé → rouge)
+            colorscale = [
+                [0, '#ebedf0'],      # Blanc (0 changements)
+                [0.2, '#c6e48b'],    # Vert très clair
+                [0.4, '#7bc96f'],    # Vert clair
+                [0.6, '#239a3b'],    # Vert moyen
+                [0.8, '#196127'],    # Vert foncé
+                [1.0, '#c41e3a']     # Rouge (très actif)
+            ]
+
+            # Créer le heatmap
+            fig = go.Figure(data=go.Heatmap(
+                z=z_data,
+                x=[f"S{w}" for w in weeks],
+                y=weekday_names,
+                colorscale=colorscale,
+                hovertemplate='%{text}<extra></extra>',
+                text=hover_data,
+                showscale=True,
+                colorbar=dict(
+                    title="Changements",
+                    titleside="right",
+                    tickmode="linear",
+                    tick0=0,
+                    dtick=max(1, max_count // 5)
+                )
+            ))
+
+            # Mise en page
+            fig.update_layout(
+                title=dict(
+                    text=f"📅 Calendrier des Changements - {year}",
+                    x=0.5,
+                    xanchor='center',
+                    font=dict(size=20, weight='bold')
+                ),
+                xaxis=dict(
+                    title="Semaines",
+                    side="bottom",
+                    tickangle=0,
+                    showgrid=False
+                ),
+                yaxis=dict(
+                    title="",
+                    showgrid=False,
+                    autorange="reversed"  # Lundi en haut
+                ),
+                height=400,
+                plot_bgcolor='white',
+                hoverlabel=dict(
+                    bgcolor="white",
+                    font_size=12,
+                    font_family="Arial"
+                )
+            )
+
+            logger.info(f"Calendrier heatmap généré pour l'année {year} avec {len(df)} changements")
+            return fig
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération du calendrier heatmap: {e}", exc_info=True)
+            fig = go.Figure()
+            fig.add_annotation(
+                text=f"Erreur: {str(e)}",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, showarrow=False,
+                font=dict(size=16, color='red')
+            )
+            return fig

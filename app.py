@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -14,6 +16,9 @@ from backend.pdf_exporter import PDFExporter
 from backend.watchlist_manager import WatchlistManager
 from backend.risk_analyzer import RiskAnalyzer
 from backend.alert_system import AlertSystem
+from backend.logger import get_logger
+
+logger = get_logger()
 
 
 st.set_page_config(
@@ -48,7 +53,7 @@ def main():
     if unread_count > 0:
         st.warning(f"🔔 {unread_count} alerte(s) non lue(s) - Consultez l'onglet 'Ma Surveillance'")
 
-    tabs = st.tabs(["Données Agrégées", "Historique des Changements", "Tendances", "Ma Surveillance", "Mise à Jour"])
+    tabs = st.tabs(["Données Agrégées", "Historique des Changements", "Tendances", "Ma Surveillance", "Calendrier", "Mise à Jour"])
 
     with tabs[0]:
         display_aggregated_data(data_manager, watchlist_manager, risk_analyzer, history_manager)
@@ -63,6 +68,9 @@ def main():
         display_watchlist_surveillance(watchlist_manager, risk_analyzer, alert_system, data_manager, history_manager)
 
     with tabs[4]:
+        display_calendar_heatmap(history_manager, data_manager, risk_analyzer)
+
+    with tabs[5]:
         display_update_section(data_manager, change_detector, history_manager, watchlist_manager, risk_analyzer, alert_system)
 
 
@@ -804,6 +812,117 @@ def display_watchlist_surveillance(watchlist_manager, risk_analyzer, alert_syste
                     risk_counts = scores_df['level'].value_counts()
                     st.bar_chart(risk_counts)
 
+                    # Section Graphiques Radar
+                    st.divider()
+                    st.subheader("📊 Graphiques Radar des Scores")
+
+                    # Tabs pour vue individuelle et comparaison
+                    radar_tabs = st.tabs(["Vue Individuelle", "Mode Comparaison"])
+
+                    with radar_tabs[0]:
+                        st.markdown("#### Visualiser le profil de risque d'une substance")
+
+                        # Sélection de la substance
+                        selected_cas_for_radar = st.selectbox(
+                            "Sélectionner une substance",
+                            options=selected_wl['cas_ids'],
+                            key="radar_cas_select",
+                            format_func=lambda x: f"{x} - {aggregated_df[aggregated_df['cas_id'] == x].iloc[0]['cas_name'] if not aggregated_df[aggregated_df['cas_id'] == x].empty else 'Unknown'}"
+                        )
+
+                        if st.button("📊 Générer Graphique Radar", key="generate_radar_btn"):
+                            with st.spinner("Génération du graphique radar..."):
+                                try:
+                                    # Calculer le score
+                                    score = risk_analyzer.calculate_risk_score(
+                                        selected_cas_for_radar,
+                                        aggregated_df,
+                                        history_df
+                                    )
+
+                                    # Obtenir le nom
+                                    substance_data = aggregated_df[aggregated_df['cas_id'] == selected_cas_for_radar]
+                                    cas_name = substance_data.iloc[0]['cas_name'] if not substance_data.empty else selected_cas_for_radar
+
+                                    # Générer le graphique
+                                    fig = risk_analyzer.generate_radar_chart(score, cas_name)
+                                    st.pyplot(fig)
+                                    plt.close(fig)
+
+                                    # Afficher les détails
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.info(f"**Score Total:** {score['total_score']}")
+                                        st.info(f"**Niveau:** {score['badge']} {score['level']}")
+                                    with col2:
+                                        pred = risk_analyzer.predict_next_change(selected_cas_for_radar, history_df)
+                                        st.info(f"**Prédiction:** {pred['prediction']}")
+                                        anom = risk_analyzer.detect_anomalies(selected_cas_for_radar, history_df)
+                                        if anom.get('has_anomaly'):
+                                            st.warning(f"⚠️ **Anomalie:** {anom['description']}")
+
+                                except Exception as e:
+                                    st.error(f"Erreur: {str(e)}")
+
+                    with radar_tabs[1]:
+                        st.markdown("#### Comparer les profils de risque (2-3 substances)")
+
+                        # Sélection multiple
+                        selected_cas_for_comparison = st.multiselect(
+                            "Sélectionner 2 ou 3 substances à comparer",
+                            options=selected_wl['cas_ids'],
+                            max_selections=3,
+                            key="radar_comparison_select",
+                            format_func=lambda x: f"{x} - {aggregated_df[aggregated_df['cas_id'] == x].iloc[0]['cas_name'] if not aggregated_df[aggregated_df['cas_id'] == x].empty else 'Unknown'}"
+                        )
+
+                        if len(selected_cas_for_comparison) >= 2:
+                            if st.button("📊 Comparer les Graphiques", key="compare_radar_btn"):
+                                with st.spinner("Génération du graphique comparatif..."):
+                                    try:
+                                        # Calculer les scores pour toutes les substances sélectionnées
+                                        scores_list = []
+                                        names_list = []
+
+                                        for cas_id in selected_cas_for_comparison:
+                                            score = risk_analyzer.calculate_risk_score(
+                                                cas_id,
+                                                aggregated_df,
+                                                history_df
+                                            )
+                                            scores_list.append(score)
+
+                                            substance_data = aggregated_df[aggregated_df['cas_id'] == cas_id]
+                                            cas_name = substance_data.iloc[0]['cas_name'] if not substance_data.empty else cas_id
+                                            names_list.append(f"{cas_id}\n{cas_name}")
+
+                                        # Générer le graphique comparatif
+                                        fig = risk_analyzer.generate_comparison_radar_chart(scores_list, names_list)
+                                        st.pyplot(fig)
+                                        plt.close(fig)
+
+                                        # Tableau comparatif
+                                        st.markdown("#### 📋 Tableau Comparatif")
+                                        comparison_data = []
+                                        for idx, score in enumerate(scores_list):
+                                            comparison_data.append({
+                                                'Substance': names_list[idx].replace('\n', ' - '),
+                                                'Score Total': score['total_score'],
+                                                'Niveau': f"{score['badge']} {score['level']}",
+                                                'Fréq. Modif.': score['components']['modification_frequency'],
+                                                'Présence Listes': score['components']['list_presence'],
+                                                'Type Changement': score['components']['recent_change_type'],
+                                                'Récence': score['components']['recency']
+                                            })
+
+                                        comparison_df = pd.DataFrame(comparison_data)
+                                        st.dataframe(comparison_df, use_container_width=True)
+
+                                    except Exception as e:
+                                        st.error(f"Erreur: {str(e)}")
+                        else:
+                            st.info("Veuillez sélectionner au moins 2 substances pour effectuer une comparaison.")
+
                     # Option de retirer une substance de la watchlist
                     st.divider()
                     st.markdown("#### ➖ Retirer une substance de cette watchlist")
@@ -901,6 +1020,159 @@ def display_pdf_export_section(data_manager, history_manager):
                 except Exception as e:
                     st.error(f"Erreur: {str(e)}")
                     st.exception(e)
+
+
+def display_calendar_heatmap(history_manager, data_manager, risk_analyzer):
+    """Affiche le calendrier heatmap des changements"""
+    st.header("📅 Calendrier des Changements")
+    st.markdown("""
+    Visualisez l'intensité de l'activité au fil du temps avec ce calendrier interactif.
+    Plus une case est foncée, plus il y a eu de changements ce jour-là.
+    """)
+
+    # Charger l'historique
+    history_df = history_manager.load_history()
+
+    if history_df.empty:
+        st.info("Aucun historique de changements disponible.")
+        return
+
+    # Convertir timestamp en datetime
+    history_df['timestamp'] = pd.to_datetime(history_df['timestamp'])
+
+    # Section de filtres
+    st.subheader("🎯 Filtres")
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        # Filtre par année
+        available_years = sorted(history_df['timestamp'].dt.year.unique(), reverse=True)
+        selected_year = st.selectbox(
+            "Année",
+            options=available_years,
+            index=0 if available_years else None
+        )
+
+    with col2:
+        # Filtre par liste source
+        source_lists = ["Toutes"] + sorted(history_df['source_list'].unique().tolist())
+        selected_source = st.selectbox(
+            "Liste Source",
+            options=source_lists,
+            index=0
+        )
+
+    with col3:
+        # Filtre par type de changement
+        change_types = ["Tous", "insertion", "suppression", "modification"]
+        selected_type = st.selectbox(
+            "Type de Changement",
+            options=change_types,
+            index=0
+        )
+
+    # Générer le heatmap
+    st.divider()
+    with st.spinner("Génération du calendrier heatmap..."):
+        try:
+            fig = risk_analyzer.generate_calendar_heatmap(
+                history_df,
+                year=selected_year,
+                source_list_filter=selected_source if selected_source != "Toutes" else None,
+                change_type_filter=selected_type if selected_type != "Tous" else None
+            )
+
+            # Afficher le graphique
+            st.plotly_chart(fig, use_container_width=True)
+
+        except Exception as e:
+            st.error(f"Erreur lors de la génération du calendrier: {str(e)}")
+            logger.error(f"Erreur calendrier heatmap: {e}", exc_info=True)
+
+    # Statistiques
+    st.divider()
+    st.subheader("📊 Statistiques")
+
+    # Filtrer les données selon les filtres appliqués
+    filtered_df = history_df[history_df['timestamp'].dt.year == selected_year]
+    if selected_source != "Toutes":
+        filtered_df = filtered_df[filtered_df['source_list'] == selected_source]
+    if selected_type != "Tous":
+        filtered_df = filtered_df[filtered_df['change_type'] == selected_type]
+
+    if not filtered_df.empty:
+        # Calculer les statistiques
+        filtered_df['date'] = filtered_df['timestamp'].dt.date
+        daily_counts = filtered_df.groupby('date').size()
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric(
+                "Total Changements",
+                len(filtered_df)
+            )
+
+        with col2:
+            st.metric(
+                "Jour le Plus Actif",
+                daily_counts.max() if not daily_counts.empty else 0
+            )
+
+        with col3:
+            avg_per_day = len(filtered_df) / 365 if selected_year else 0
+            st.metric(
+                "Moyenne Jour",
+                f"{avg_per_day:.1f}"
+            )
+
+        with col4:
+            days_with_changes = len(daily_counts[daily_counts > 0])
+            st.metric(
+                "Jours Actifs",
+                days_with_changes
+            )
+
+        # Jour le plus actif avec détails
+        if not daily_counts.empty:
+            busiest_day = daily_counts.idxmax()
+            busiest_count = daily_counts.max()
+
+            st.info(f"📅 **Jour le plus actif**: {busiest_day} avec {busiest_count} changement(s)")
+
+            # Détails du jour le plus actif
+            busiest_day_data = filtered_df[filtered_df['date'] == busiest_day]
+            insertions = len(busiest_day_data[busiest_day_data['change_type'] == 'insertion'])
+            deletions = len(busiest_day_data[busiest_day_data['change_type'] == 'suppression'])
+            modifications = len(busiest_day_data[busiest_day_data['change_type'] == 'modification'])
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.success(f"✅ Insertions: {insertions}")
+            with col2:
+                st.error(f"❌ Suppressions: {deletions}")
+            with col3:
+                st.warning(f"✏️ Modifications: {modifications}")
+
+        # Tableau des 10 jours les plus actifs
+        st.divider()
+        st.subheader("🔥 Top 10 des Jours les Plus Actifs")
+
+        if not daily_counts.empty:
+            top_days = daily_counts.nlargest(10).reset_index()
+            top_days.columns = ['Date', 'Nombre de Changements']
+            top_days['Rang'] = range(1, len(top_days) + 1)
+            top_days = top_days[['Rang', 'Date', 'Nombre de Changements']]
+
+            st.dataframe(
+                top_days,
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("Aucune donnée à afficher pour cette période.")
+    else:
+        st.info("Aucun changement trouvé pour les filtres sélectionnés.")
 
 
 if __name__ == "__main__":
