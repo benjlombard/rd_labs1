@@ -159,9 +159,14 @@ rd_labs1/
 ├── .gitignore                  # Fichiers à ignorer par git
 ├── backend/                    # Modules Python
 │   ├── __init__.py
+│   ├── logger.py               # Module de logging avec rotation
 │   ├── data_manager.py         # Gestion des données Excel
 │   ├── change_detector.py      # Détection des changements
 │   └── history_manager.py      # Gestion de l'historique
+├── logs/                       # Logs de l'application (généré, gitignored)
+│   ├── echa_app_debug.log      # Logs DEBUG et plus
+│   ├── echa_app_info.log       # Logs INFO et plus
+│   └── echa_app_error.log      # Logs ERROR et CRITICAL
 └── data/                       # Dossier des données
     ├── input/                  # Fichiers Excel sources
     │   ├── cas_source.xlsx     # Base principale des substances
@@ -229,6 +234,56 @@ rd_labs1/
 - `get_changes_by_type(change_type)` : Filtre par type
 - `get_changes_by_list(list_name)` : Filtre par liste
 - `get_changes_by_cas(cas_id)` : Filtre par CAS ID
+
+### 4. logger.py
+**Responsabilités** :
+- Gestion centralisée du logging de l'application
+- Rotation automatique des fichiers de logs
+- Séparation des logs par niveau de criticité
+- Affichage console en temps réel
+
+**Caractéristiques** :
+- **Niveaux supportés** : DEBUG, INFO, WARNING, ERROR, CRITICAL
+- **Rotation** : 10MB max par fichier, 5 fichiers de backup
+- **Fichiers séparés** :
+  - `echa_app_debug.log` : tous les messages (DEBUG et plus)
+  - `echa_app_info.log` : messages INFO, WARNING, ERROR, CRITICAL
+  - `echa_app_error.log` : uniquement ERROR et CRITICAL
+- **Console** : affiche INFO et plus en temps réel
+- **Format** : `YYYY-MM-DD HH:MM:SS - nom - NIVEAU - fichier:ligne - message`
+- **Encodage** : UTF-8 pour support caractères spéciaux
+
+**Méthodes principales** :
+- `debug(message)` : Log niveau DEBUG
+- `info(message)` : Log niveau INFO
+- `warning(message)` : Log niveau WARNING
+- `error(message, exc_info=False)` : Log niveau ERROR (avec traceback optionnel)
+- `critical(message, exc_info=False)` : Log niveau CRITICAL
+- `exception(message)` : Log exception avec traceback complet
+- `get_logger()` : Fonction singleton pour obtenir l'instance unique
+
+**Intégration** :
+- Tous les modules backend utilisent le même logger via `get_logger()`
+- Logs détaillés pour chaque opération :
+  - DataManager : chargement, agrégation, sauvegarde
+  - ChangeDetector : détection des changements par liste
+  - HistoryManager : initialisation, sauvegarde historique
+
+**Configuration** :
+```python
+from backend.logger import get_logger
+
+# Dans chaque module
+logger = get_logger()
+logger.info("Message d'information")
+logger.debug("Message de debug")
+logger.error("Message d'erreur", exc_info=True)
+```
+
+**Emplacement des logs** :
+- Dossier : `logs/`
+- Exclus de Git via `.gitignore`
+- Rotation automatique quand fichier > 10MB
 
 ## Application Streamlit (app.py)
 
@@ -440,11 +495,22 @@ git push origin feature/optimize-aggregation-save
 - Fréquence paramétrable
 - Ajout de listes simple
 
+### ✅ Logging et Monitoring
+- Module de logging centralisé avec rotation de fichiers
+- Niveaux DEBUG/INFO/WARNING/ERROR/CRITICAL
+- Fichiers séparés par niveau de criticité
+- Rotation automatique (10MB max, 5 backups)
+- Logs détaillés de toutes les opérations
+- Format standardisé avec timestamps et contexte
+- Console handler pour suivi temps réel
+- Singleton pour instance unique partagée
+
 ### ✅ Qualité du Code
-- Architecture modulaire (3 modules backend)
+- Architecture modulaire (4 modules backend)
 - Faible complexité cyclomatique
 - Documentation complète
-- Tests unitaires possibles
+- Tests unitaires et intégration
+- Logging intégré dans tous les modules
 
 ## Migration vers SharePoint (Prévu)
 
@@ -602,18 +668,22 @@ Si tu dois recréer ce projet, voici les étapes EXACTES :
 
 1. **Lire CLAUDE.md** (ce fichier)
 2. **Créer la structure** :
-   - `mkdir -p backend data/input data/archives`
+   - `mkdir -p backend data/input data/archives logs`
 3. **Créer config.yaml** avec la structure décrite ci-dessus
-4. **Créer les 3 modules backend** :
-   - `data_manager.py` avec optimisation de sauvegarde
-   - `change_detector.py` avec comparaison colonnes communes
-   - `history_manager.py` avec archivage optionnel
+4. **Créer les 4 modules backend** :
+   - `logger.py` avec rotation de fichiers et niveaux DEBUG/INFO/ERROR
+   - `data_manager.py` avec optimisation de sauvegarde et logging
+   - `change_detector.py` avec comparaison colonnes communes et logging
+   - `history_manager.py` avec archivage optionnel et logging
 5. **Créer app.py** avec 3 onglets Streamlit
 6. **Créer requirements.txt** avec versions >= flexibles
-7. **Créer .gitignore** excluant venv/, .claude/, test_*.py
+7. **Créer .gitignore** excluant venv/, .claude/, test_*.py, logs/
 8. **Créer README.md** avec documentation utilisateur
 9. **Initialiser git** et pousser sur GitHub
 10. **Créer environnement virtuel** et installer dépendances
-11. **Tester** l'application
+11. **Tester** l'application et vérifier les logs
 
-**IMPORTANT** : Ne pas oublier les optimisations et corrections de bugs mentionnées ci-dessus
+**IMPORTANT** :
+- Ne pas oublier les optimisations et corrections de bugs mentionnées ci-dessus
+- S'assurer que le module logger est créé EN PREMIER (les autres modules en dépendent)
+- Intégrer `get_logger()` dans tous les modules backend pour le logging centralisé
