@@ -1,0 +1,85 @@
+# Configuration de l'application de suivi des substances chimiques ECHA
+
+# Paramètres généraux
+general:
+  update_frequency: "weekly"  # Options: daily, weekly, monthly
+  archive_old_files: true     # true pour archiver, false pour supprimer
+  data_folder: "data"
+  archive_folder: "data/archives"
+
+# Configuration des fichiers sources
+source_files:
+  cas_source: "cas_source.xlsx"
+  lists:
+    - name: "testa"
+      file: "testa.xlsx"
+      description: "Liste d'autorisation"
+    - name: "testb"
+      file: "testb.xlsx"
+      description: "Liste CHLS"
+    - name: "testc"
+      file: "testc.xlsx"
+      description: "Liste restriction"
+    - name: "testd"
+      file: "testd.xlsx"
+      description: "Liste complémentaire"
+
+# Configuration des colonnes
+columns:
+  # Colonnes communes à tous les fichiers
+  common:
+    cas_id: "cas_id"
+    cas_name: "cas_name"
+
+  # Colonnes spécifiques à testa.xlsx
+  testa:
+    info_1: "info_a_1"
+    info_2: "info_a_2"
+    info_3: "info_a_3"
+    info_4: "info_a_4"
+    info_5: "info_a_5"
+    info_6: "info_a_6"
+    info_7: "info_a_7"
+    info_8: "info_a_8"
+    info_9: "info_a_9"
+
+  # Colonnes spécifiques à testb.xlsx
+  testb:
+    info_1: "info_b_1"
+    info_2: "info_b_2"
+    info_3: "info_b_3"
+    info_4: "info_b_4"
+    info_5: "info_b_5"
+    info_6: "info_b_6"
+    info_7: "info_b_7"
+    info_8: "info_b_8"
+    info_9: "info_b_9"
+
+  # Colonnes spécifiques à testc.xlsx
+  testc:
+    info_1: "info_c_1"
+    info_2: "info_c_2"
+    info_3: "info_c_3"
+    info_4: "info_c_4"
+    info_5: "info_c_5"
+    info_6: "info_c_6"
+    info_7: "info_c_7"
+    info_8: "info_c_8"
+    info_9: "info_c_9"
+
+  # Colonnes spécifiques à testd.xlsx
+  testd:
+    info_1: "info_d_1"
+    info_2: "info_d_2"
+    info_3: "info_d_3"
+    info_4: "info_d_4"
+    info_5: "info_d_5"
+    info_6: "info_d_6"
+    info_7: "info_d_7"
+    info_8: "info_d_8"
+    info_9: "info_d_9"
+
+# Fichiers de sortie
+output_files:
+  aggregated_data: "data/aggregated_data.xlsx"
+  change_history: "data/change_history.xlsx"
