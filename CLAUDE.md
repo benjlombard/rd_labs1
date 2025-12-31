@@ -1,63 +1,67 @@
-j'ai 4 fichiers excel nommés : testa.xlsx, testb.xlsx, testc.xlsx et testd.xlsx dans un dossier actuellement. Plus tard les fichiers excel seront
-probablement sur un sharepoint et donc la location doit être générique pour pouvoir
-facilement prendre depuis un sharepoint plus tard.
-Chaque fichier excel correspond à une liste de l'agence européenne des substances chimiques : 
- - liste d'authorisation
- - liste chls
- - liste restriction
- - ...
+# 📋 CLAUDE.md - Guide de Développement Projet ECHA
 
-Le fichier testa.xlsx a pour structure :
-cas_id,cas_name,info_a_1,info_a_2,info_a_3,info_a_4,info_a_5,info_a_6,info_a_7,info_a_8,info_a_9
+**Dernière mise à jour** : 31/12/2025
 
-le fichier testb.xlsx a pour structure : 
-cas_id,cas_name,info_b_1,info_b_2,info_b_3,info_b_4,info_b_5,info_b_6,info_b_7,info_b_8,info_b_9
+---
 
-Le fichier testc.xlsx a pour structure : 
-cas_id,cas_name,info_c_1,info_c_2,info_c_3,info_c_4,info_c_5,info_c_6,info_c_7,info_c_8,info_c_9
+# 📑 Table des Matières
 
-Le fichier testd.xlsx a pour structure : 
-cas_id,cas_name,info_d_1,info_d_2,info_d_3,info_d_4,info_d_5,info_d_6,info_d_7,info_d_8,info_d_9
+1. [Contexte du Projet](#contexte-du-projet)
+2. [Mode de Travail](#mode-de-travail)
+3. [Architecture de Base](#architecture-de-base)
+4. [Fonctionnalités Modulaires](#fonctionnalités-modulaires)
+   - [CORE-01: Gestion des Données](#core-01-gestion-des-données)
+   - [CORE-02: Détection de Changements](#core-02-détection-de-changements)
+   - [CORE-03: Historisation](#core-03-historisation)
+   - [UI-01: Interface Streamlit Base](#ui-01-interface-streamlit-base)
+   - [UI-02: Tableau de Bord Tendances](#ui-02-tableau-de-bord-tendances)
+   - [FEAT-01: Export PDF](#feat-01-export-pdf)
+   - [FEAT-02: Logging Centralisé](#feat-02-logging-centralisé)
+   - [FEAT-03: Archivage Automatique](#feat-03-archivage-automatique)
+   - [FEAT-04: Système de Watchlists](#feat-04-système-de-watchlists)
+   - [FEAT-05: Analyse de Risque](#feat-05-analyse-de-risque)
+   - [FEAT-06: Système d'Alertes](#feat-06-système-dalertes)
+   - [FEAT-07: Timestamps et Tracking](#feat-07-timestamps-et-tracking)
+5. [Installation et Déploiement](#installation-et-déploiement)
+6. [Migration SharePoint](#migration-sharepoint)
+7. [Tests](#tests)
 
-Tous les jours ou toutes les semaines (la fréquence n'est pas définie encore donc cela doit être facilement modifiable)
-Les 4 fichiers excel sont retéléchargés depuis le site ECHA (agence européenne des substances chimiques) et les anciens fichiers sont archivés ou supprimés (à voir ce qui est le mieux).
+---
 
-A chaque mis à jour des 4 fichiers excel on peut avoir plusieurs situations : 
-	- Une substance chimique est supprimé d'une liste
-	- Une substance chimique est insérée dans une liste
-	- Une substance chimique voit ses informations mises à jour
+# Contexte du Projet
 
-Il faudrait donc peut être créé un fichier excel aggrégeant toutes les données et un autre fichier excel contenant l'historique des modifications / suppressions / insertions.
-Je te laisse voir ce qui est le mieux à faire.
+## Objectif
+Créer un système de suivi des substances chimiques de l'agence européenne ECHA (European Chemicals Agency) avec détection automatique des changements.
 
-L'utilisateur veut un tableau de bord steamlit où
-	- Il peut visualiser chaque substance chimique avec toutes les informations disponibles dans les listes. L'idéal serait d'avoir un tableau aggrégeant les 15 listes et une colonne liste source pour savoir à quelle liste appartient une ligne). En sachant qu'une substance chimique peut être dans plusieurs liste.
-	- Il veut pouvoir filtrer sur les noms de susbstance chimique et sur le col_cas (identifiant unique)
-	- Il veut être alerté dans le tableau de bord (peut être un tableau à part) pour chaque insertion / suppression / modification de chaque liste)
+## Données Source
+- **4 fichiers Excel** (actuellement locaux, futurs SharePoint) :
+  - `testa.xlsx` : Liste d'autorisation
+  - `testb.xlsx` : Liste CHLS
+  - `testc.xlsx` : Liste restriction
+  - `testd.xlsx` : Liste complémentaire
+- **Structure commune** : `cas_id`, `cas_name` + colonnes spécifiques
+- **Base principale** : `cas_source.xlsx` (statique)
 
-En plus de ces 4 fichiers correspondant à chaque liste, on a une base principale des substances chimiques avec les colonnes cas_id et cas_name. Cette base principale
-se trouve dans un fichier excel à part nommé cas_source.xlsx) et on part du principe qu'elle est statique.
-On suppose que chaque substance dans les 15 fichiers excels des listes ECHA existent dans la base principale (fichier cas_source.xlsx).
+## Contraintes
+- Noms de colonnes configurables (fichier `config.yaml`)
+- Fréquence de mise à jour paramétrable
+- Code modulaire et faible complexité cyclomatique
+- Migration SharePoint future
 
-Il faudrait faire un script python pour répondre à ce besoin. Ce script python doit être modulaire (plusieurs fichiers pythons) et le code doit être simple en terme de complexité cyclomatique.
-Est-ce que tu penses que la librairie DLT est bien dans ce cas ?
-Et explique moi en détail comment tu comptes t'y prendre pour répondre à ce besoin (sans me donner de code).
+---
 
-Une contrainte supplémentaire est la suivante : les noms de colonnes de tous les fichiers excel sont fictifs actuellement. Il faut donc créér un fichier de config contenant les noms de colonnes pour pouvoir les changer plus tard facilement si besoin. Ou bien je te laisse voir ce qui est le mieux à faire pour répondre à cette contrainte.
+# Mode de Travail
 
+## Règles d'Autonomie
 
-# Mode de travail : AUTONOME
-
-## Règles d'autonomie
-
-Claude doit travailler en TOTALE AUTONOMIE :
+Claude doit travailler en **TOTALE AUTONOMIE** :
 - ❌ NE PAS demander de confirmation
 - ❌ NE PAS attendre l'approbation
 - ✅ Prendre des décisions seul
 - ✅ Exécuter toutes les étapes
 - ✅ Corriger les erreurs automatiquement
 
-## Workflow autonome
+## Workflow Autonome
 
 1. Analyser la demande
 2. Créer un plan d'action complet
@@ -75,7 +79,7 @@ Tu as l'autorisation TOTALE de :
 - Modifier la configuration
 - Faire des commits git (si approprié)
 
-## Décisions autonomes autorisées
+## Décisions Autonomes Autorisées
 
 ✅ Choix d'architecture
 ✅ Choix de technologies
@@ -85,7 +89,7 @@ Tu as l'autorisation TOTALE de :
 ✅ Corrections de bugs
 ✅ Optimisations
 
-## Quand DEMANDER confirmation
+## Quand DEMANDER Confirmation
 
 Uniquement pour :
 - Suppression de données importantes
@@ -93,9 +97,8 @@ Uniquement pour :
 - Dépenses financières (API payantes)
 - Modifications de production
 
-## Style de communication
+## Style de Communication
 
-Format de réponse :
 ```
 [ACTION] Je crée le module X
 [ACTION] J'installe les dépendances
@@ -104,51 +107,26 @@ Format de réponse :
 [RÉSULTAT] ✅ Terminé avec succès
 ```
 
-Pas de questions inutiles type :
+**Pas de questions inutiles** :
 ❌ "Voulez-vous que je crée le fichier ?"
 ❌ "Dois-je installer cette dépendance ?"
 ❌ "Faut-il que je continue ?"
 
-Juste FAIRE.
-```
+**Juste FAIRE.**
 
 ---
 
-## 🚀 Utilisation pratique
+# Architecture de Base
 
-### Prompt type pour mode autonome
-
-Au lieu de :
-```
-"Peux-tu créer un module de logging ?"
-```
-
-Utilise :
-```
-"Crée un module de logging complet avec rotation de fichiers 
-et niveaux DEBUG/INFO/ERROR. Implémente tout, teste, et 
-confirme quand c'est fait. Ne demande rien."
-```
-
-Ou plus court :
-```
-"/auto Crée un module de logging complet"
-```
-
----
-
-# 📋 SOLUTION IMPLÉMENTÉE
-
-## Architecture de l'Application
-
-### Stack Technique
-- **Backend** : Python 3.8+ avec modules modulaires
-- **Frontend** : Streamlit (interface web interactive)
-- **Configuration** : YAML (config.yaml)
-- **Données** : Pandas + openpyxl pour Excel
+## Stack Technique
+- **Backend** : Python 3.8+
+- **Frontend** : Streamlit
+- **Configuration** : YAML (`config.yaml`)
+- **Données** : Pandas + openpyxl
 - **Versionning** : Git + GitHub
 
-### Structure du Projet
+## Structure du Projet
+
 ```
 rd_labs1/
 ├── app.py                      # Application Streamlit principale
@@ -156,293 +134,27 @@ rd_labs1/
 ├── requirements.txt            # Dépendances Python
 ├── README.md                   # Documentation utilisateur
 ├── CLAUDE.md                   # Ce fichier - instructions pour Claude
-├── .gitignore                  # Fichiers à ignorer par git
+├── .gitignore                  # Fichiers à ignorer
 ├── backend/                    # Modules Python
 │   ├── __init__.py
-│   ├── logger.py               # Module de logging avec rotation
-│   ├── data_manager.py         # Gestion des données Excel
-│   ├── change_detector.py      # Détection des changements
-│   ├── history_manager.py      # Gestion de l'historique
-│   └── pdf_exporter.py         # Export de rapports PDF
-├── logs/                       # Logs de l'application (généré, gitignored)
-│   ├── echa_app_debug.log      # Logs DEBUG et plus
-│   ├── echa_app_info.log       # Logs INFO et plus
-│   └── echa_app_error.log      # Logs ERROR et CRITICAL
+│   ├── [modules selon fonctionnalités activées]
+├── logs/                       # Logs (si FEAT-02 activé)
 └── data/                       # Dossier des données
     ├── input/                  # Fichiers Excel sources
-    │   ├── cas_source.xlsx     # Base principale des substances
-    │   ├── testa.xlsx          # Liste d'autorisation
-    │   ├── testb.xlsx          # Liste CHLS
-    │   ├── testc.xlsx          # Liste restriction
-    │   └── testd.xlsx          # Liste complémentaire
-    ├── archives/               # Archives des anciennes versions
-    ├── reports/                # Rapports PDF générés (gitignored)
-    ├── aggregated_data.xlsx    # Données agrégées (généré)
-    └── change_history.xlsx     # Historique des changements (généré)
+    ├── archives/               # Archives (si FEAT-03 activé)
+    ├── reports/                # Rapports PDF (si FEAT-01 activé)
+    ├── watchlists.json         # Watchlists (si FEAT-04 activé)
+    ├── alerts.json             # Alertes (si FEAT-06 activé)
+    ├── aggregated_data.xlsx    # Données agrégées
+    └── change_history.xlsx     # Historique des changements
 ```
-
-## Modules Backend Implémentés
-
-### 1. data_manager.py
-**Responsabilités** :
-- Charger les fichiers Excel sources
-- Agréger les données de toutes les listes
-- Sauvegarder le fichier agrégé (avec optimisation)
-- Comparer les DataFrames pour éviter les réécritures inutiles
-- Gérer les timestamps de création et modification
-- **Archiver automatiquement les fichiers sources**
-
-**Méthodes principales** :
-- `load_cas_source()` : Charge la base principale
-- `load_list_file(list_name)` : Charge un fichier spécifique
-- `load_all_lists()` : Charge tous les fichiers
-- `aggregate_all_data()` : Agrège toutes les listes avec timestamps
-- `save_aggregated_data(df, force=False)` : Sauvegarde optimisée (retourne True/False)
-- `_dataframes_are_equal(df1, df2)` : Compare deux DataFrames
-- `_update_timestamps(new_df)` : Ajoute ou met à jour created_at et updated_at
-- `get_file_modification_date(list_name)` : Retourne la date de modification du fichier source
-- `archive_source_files()` : Archive tous les fichiers Excel sources avec timestamp
-
-**Optimisation implémentée** :
-- Ne réécrit le fichier agrégé QUE si les données ont changé
-- Évite les I/O disque inutiles
-- Préserve la date de modification si aucun changement
-- Paramètre `force=True` pour forcer la sauvegarde
-
-**Gestion des Timestamps** :
-- **created_at** : Date de première apparition de la substance (conservée lors des mises à jour)
-- **updated_at** : Date de dernière modification des données (mise à jour si changement détecté)
-- Clé unique : `cas_id + source_list` pour identifier les substances
-- Comparaison intelligente : exclut les colonnes de métadonnées lors de la comparaison
-
-**Archivage Automatique des Fichiers Sources** :
-- Copie automatique des fichiers Excel de `data/input/` vers `data/archives/`
-- Ajout d'un timestamp au nom du fichier : `nom_fichier_YYYYMMDD_HHMMSS.xlsx`
-- Exemple : `testa.xlsx` → `testa_20251231_153045.xlsx`
-- Utilisation de `shutil.copy2()` pour préserver les métadonnées
-- Les fichiers originaux restent dans `input/` (copie, pas déplacement)
-- Création automatique du dossier `data/archives/` si inexistant
-- Retourne le nombre de fichiers archivés
-- Logging de toutes les opérations d'archivage
-- Gestion des erreurs sans interruption du processus principal
-
-### 2. change_detector.py
-**Responsabilités** :
-- Détecter les insertions de substances
-- Détecter les suppressions de substances
-- Détecter les modifications de données
-- Identifier les champs modifiés
-
-**Méthodes principales** :
-- `detect_changes_for_list(old_df, new_df, list_name)` : Détecte pour une liste
-- `detect_all_changes(old_lists, new_lists)` : Détecte pour toutes les listes
-- `_create_change_record()` : Crée un enregistrement de changement
-- `_get_modified_fields(old_row, new_row)` : Identifie les champs modifiés
-
-**Corrections appliquées** :
-- Comparaison uniquement des colonnes communes entre ancienne et nouvelle version
-- Évite l'erreur KeyError lors de la comparaison
-
-### 3. history_manager.py
-**Responsabilités** :
-- Sauvegarder l'historique des changements
-- Archiver les anciens fichiers (optionnel)
-- Récupérer l'historique avec filtres
-- Nettoyer l'historique si nécessaire
-
-**Méthodes principales** :
-- `load_history()` : Charge l'historique existant
-- `save_changes(changes_df)` : Ajoute des changements
-- `archive_files(list_name, file_path)` : Archive un fichier
-- `get_recent_changes(limit)` : Récupère les N derniers changements
-- `get_changes_by_type(change_type)` : Filtre par type
-- `get_changes_by_list(list_name)` : Filtre par liste
-- `get_changes_by_cas(cas_id)` : Filtre par CAS ID
-
-### 4. logger.py
-**Responsabilités** :
-- Gestion centralisée du logging de l'application
-- Rotation automatique des fichiers de logs
-- Séparation des logs par niveau de criticité
-- Affichage console en temps réel
-
-**Caractéristiques** :
-- **Niveaux supportés** : DEBUG, INFO, WARNING, ERROR, CRITICAL
-- **Rotation** : 10MB max par fichier, 5 fichiers de backup
-- **Fichiers séparés** :
-  - `echa_app_debug.log` : tous les messages (DEBUG et plus)
-  - `echa_app_info.log` : messages INFO, WARNING, ERROR, CRITICAL
-  - `echa_app_error.log` : uniquement ERROR et CRITICAL
-- **Console** : affiche INFO et plus en temps réel
-- **Format** : `YYYY-MM-DD HH:MM:SS - nom - NIVEAU - fichier:ligne - message`
-- **Encodage** : UTF-8 pour support caractères spéciaux
-
-**Méthodes principales** :
-- `debug(message)` : Log niveau DEBUG
-- `info(message)` : Log niveau INFO
-- `warning(message)` : Log niveau WARNING
-- `error(message, exc_info=False)` : Log niveau ERROR (avec traceback optionnel)
-- `critical(message, exc_info=False)` : Log niveau CRITICAL
-- `exception(message)` : Log exception avec traceback complet
-- `get_logger()` : Fonction singleton pour obtenir l'instance unique
-
-**Intégration** :
-- Tous les modules backend utilisent le même logger via `get_logger()`
-- Logs détaillés pour chaque opération :
-  - DataManager : chargement, agrégation, sauvegarde
-  - ChangeDetector : détection des changements par liste
-  - HistoryManager : initialisation, sauvegarde historique
-
-**Configuration** :
-```python
-from backend.logger import get_logger
-
-# Dans chaque module
-logger = get_logger()
-logger.info("Message d'information")
-logger.debug("Message de debug")
-logger.error("Message d'erreur", exc_info=True)
-```
-
-**Emplacement des logs** :
-- Dossier : `logs/`
-- Exclus de Git via `.gitignore`
-- Rotation automatique quand fichier > 10MB
-
-### 5. pdf_exporter.py
-**Responsabilités** :
-- Génération de rapports PDF professionnels
-- Création de graphiques (matplotlib)
-- Mise en page avec tableaux et statistiques
-- Export automatique et téléchargement
-
-**Caractéristiques** :
-- **Format** : A4, marges optimisées
-- **Sections du rapport** :
-  - Page titre avec date/heure
-  - Statistiques générales (substances, listes, changements)
-  - Graphiques (bar chart répartition, pie chart changements)
-  - Tableaux (derniers changements, substances)
-- **Graphiques** : Matplotlib pour génération, conversion PNG → PDF
-- **Mise en page** : ReportLab avec styles personnalisés
-- **Encodage** : UTF-8 pour caractères spéciaux
-- **Pagination** : Automatique avec PageBreak
-
-**Contenu du rapport** :
-1. **Statistiques** :
-   - Total substances
-   - Substances uniques (CAS ID)
-   - Listes sources
-   - Total changements (insertions, suppressions, modifications)
-
-2. **Graphiques** :
-   - Bar chart : Répartition des substances par liste source
-   - Pie chart : Types de changements (insertion, suppression, modification)
-
-3. **Tableaux** :
-   - Derniers changements (20 max) : timestamp, type, liste, CAS ID, nom
-   - Substances (30 max) : CAS ID, nom, liste source
-
-**Méthodes principales** :
-- `generate_report(aggregated_df, history_df, output_path)` : Génère le rapport complet
-- `_add_statistics_section()` : Ajoute les statistiques
-- `_add_distribution_chart()` : Graphique répartition par liste
-- `_add_changes_chart()` : Graphique répartition des changements
-- `_add_recent_changes_table()` : Tableau des derniers changements
-- `_add_substances_table()` : Tableau des substances
-
-**Styles et couleurs** :
-- En-têtes : bleu (#1f77b4)
-- Texte : noir (#2c3e50)
-- Tableaux : fond beige/blanc alterné
-- Graphiques : palette professionnelle
-
-**Intégration** :
-- Bouton "Générer Rapport PDF" en haut de l'application
-- Téléchargement direct via Streamlit
-- Sauvegarde automatique dans `data/reports/rapport_echa_YYYYMMDD_HHMMSS.pdf`
-- Logging de toutes les opérations
-
-**Configuration** :
-```python
-from backend.pdf_exporter import PDFExporter
-
-pdf_exporter = PDFExporter()
-success = pdf_exporter.generate_report(aggregated_df, history_df, "rapport.pdf")
-```
-
-**Dépendances** :
-- `reportlab>=4.0.0` : génération PDF
-- `matplotlib>=3.8.0` : graphiques
-
-## Application Streamlit (app.py)
-
-### 4 Onglets Principaux
-
-#### Onglet 1 : Données Agrégées
-- Tableau complet de toutes les substances
-- Colonnes `source_list`, `created_at`, `updated_at`
-- **Bouton "🔄 Reset Filtres"** : réinitialise tous les filtres en un clic
-- Filtres avec persistance via `st.session_state` :
-  - Par nom de substance (cas_name)
-  - Par identifiant CAS (cas_id)
-  - Par liste source (source_list)
-- Statistiques :
-  - Total de substances
-  - Substances uniques
-  - Répartition par liste
-- Export CSV des données filtrées
-
-#### Onglet 2 : Historique des Changements
-- Tableau de tous les changements détectés
-- Filtres :
-  - Par type (insertion, suppression, modification)
-  - Par liste source
-  - Par CAS ID
-- Statistiques des changements
-- Export CSV de l'historique
-
-#### Onglet 3 : Tendances
-- **Graphique d'évolution du nombre de substances (multi-courbes)** :
-  - **Filtre multiselect** avec cases à cocher pour sélectionner les listes à afficher
-  - Toutes les listes sélectionnées par défaut
-  - **Une ligne par liste source** (ex: testa, testb, testc, testd)
-  - **Une ligne "TOTAL"** qui cumule toutes les listes sélectionnées
-  - Évolution cumulée indépendante pour chaque liste source
-  - Basé sur la colonne `created_at`
-  - Statistiques : total substances, première et dernière date
-  - Conversion des dates en string pour compatibilité avec st.line_chart()
-- **Graphique de tendances des changements** :
-  - Bar chart des insertions/suppressions/modifications par date
-  - Basé sur l'historique avec `timestamp`
-  - **Filtre selectbox séparé** pour filtrer par liste source
-  - Statistiques par type de changement (total, insertions, suppressions, modifications)
-- **Tableau des derniers changements** (10 plus récents)
-- **Séparation des filtres** : multiselect pour évolution, selectbox pour changements
-
-#### Onglet 4 : Mise à Jour
-- Bouton "Charger et Agréger les Données"
-- **Archivage automatique avant chargement** :
-  - Copie tous les fichiers Excel sources vers `data/archives/`
-  - Ajout timestamp au nom : `fichier_YYYYMMDD_HHMMSS.xlsx`
-  - Message info : "📦 X fichiers archivés dans data/archives/"
-  - Spinner "Archivage des fichiers sources..." pendant l'opération
-- Messages adaptatifs :
-  - **Vert** : "Données sauvegardées avec succès" (fichier modifié)
-  - **Bleu** : "Aucun changement détecté, fichier non modifié" (optimisé)
-  - **Disparition automatique après 5 secondes**
-- Détection automatique des changements
-- Aperçu des changements détectés
-- Vérification de la présence des fichiers sources
-- **Affichage de la date de modification des fichiers Excel** (4ème colonne)
 
 ## Configuration (config.yaml)
 
-### Sections
 ```yaml
 general:
   update_frequency: "weekly"  # daily, weekly, monthly
-  archive_old_files: true     # true = archiver, false = supprimer
+  archive_old_files: true
   data_folder: "data"
   archive_folder: "data/archives"
 
@@ -461,236 +173,825 @@ columns:
   testa:
     info_1: "info_a_1"
     # ... autres colonnes
-  # ... autres listes
 
 output_files:
   aggregated_data: "data/aggregated_data.xlsx"
   change_history: "data/change_history.xlsx"
 ```
 
-### Flexibilité
-- Noms de colonnes modifiables facilement
-- Fréquence de mise à jour paramétrable
-- Noms de fichiers configurables
-- Ajout de nouvelles listes simple
+---
 
-## Installation et Lancement
+# Fonctionnalités Modulaires
 
-### Étape 1 : Environnement Virtuel
+> **Note** : Chaque fonctionnalité est indépendante et peut être activée/désactivée selon les besoins.
+
+---
+
+## CORE-01: Gestion des Données
+
+**Statut** : ✅ OBLIGATOIRE (fonctionnalité de base)
+
+### Description
+Module central pour charger, agréger et sauvegarder les données Excel.
+
+### Fichiers
+- `backend/data_manager.py`
+
+### Fonctionnalités
+- Chargement de fichiers Excel depuis `data/input/`
+- Agrégation de toutes les listes avec colonne `source_list`
+- Sauvegarde du fichier agrégé
+- Lecture de la configuration depuis `config.yaml`
+
+### Méthodes Principales
+- `load_cas_source()` : Charge la base principale
+- `load_list_file(list_name)` : Charge un fichier spécifique
+- `load_all_lists()` : Charge tous les fichiers
+- `aggregate_all_data()` : Agrège toutes les listes
+- `save_aggregated_data(df, force=False)` : Sauvegarde
+- `load_aggregated_data()` : Charge les données agrégées
+
+### Dépendances
+- `pandas`
+- `openpyxl`
+- `PyYAML`
+
+### Activation/Désactivation
+**Ne peut pas être désactivé** - fonctionnalité de base requise.
+
+---
+
+## CORE-02: Détection de Changements
+
+**Statut** : ✅ OBLIGATOIRE
+
+### Description
+Détecte les insertions, suppressions et modifications entre deux versions des données.
+
+### Fichiers
+- `backend/change_detector.py`
+
+### Fonctionnalités
+- Détection des insertions de substances
+- Détection des suppressions de substances
+- Détection des modifications avec identification des champs modifiés
+- Comparaison intelligente (colonnes communes uniquement)
+
+### Méthodes Principales
+- `detect_changes_for_list(old_df, new_df, list_name)` : Détecte pour une liste
+- `detect_all_changes(old_lists, new_lists)` : Détecte pour toutes les listes
+- `_create_change_record()` : Crée un enregistrement de changement
+- `_get_modified_fields(old_row, new_row)` : Identifie les champs modifiés
+
+### Dépendances
+- `pandas`
+- CORE-01 (DataManager)
+
+### Activation/Désactivation
+**Ne peut pas être désactivé** - fonctionnalité de base requise.
+
+---
+
+## CORE-03: Historisation
+
+**Statut** : ✅ OBLIGATOIRE
+
+### Description
+Enregistre l'historique de tous les changements détectés.
+
+### Fichiers
+- `backend/history_manager.py`
+
+### Fonctionnalités
+- Sauvegarde de l'historique dans `data/change_history.xlsx`
+- Archivage optionnel des anciens fichiers
+- Récupération de l'historique avec filtres
+- Statistiques des changements
+
+### Méthodes Principales
+- `load_history()` : Charge l'historique existant
+- `save_changes(changes_df)` : Ajoute des changements
+- `archive_files(list_name, file_path)` : Archive un fichier
+- `get_recent_changes(limit)` : Récupère les N derniers changements
+- `get_changes_by_type(change_type)` : Filtre par type
+- `get_changes_by_list(list_name)` : Filtre par liste
+- `get_changes_by_cas(cas_id)` : Filtre par CAS ID
+
+### Dépendances
+- `pandas`
+- `openpyxl`
+
+### Activation/Désactivation
+**Ne peut pas être désactivé** - fonctionnalité de base requise.
+
+---
+
+## UI-01: Interface Streamlit Base
+
+**Statut** : ✅ OBLIGATOIRE
+
+### Description
+Interface web principale avec 3 onglets de base.
+
+### Fichiers
+- `app.py` (fonctions de base)
+
+### Onglets Inclus
+1. **Données Agrégées** : Visualisation des substances avec filtres
+2. **Historique des Changements** : Tableau des changements avec filtres
+3. **Mise à Jour** : Charger et agréger les données
+
+### Fonctionnalités Onglet 1
+- Tableau complet de toutes les substances
+- Filtres par nom (`cas_name`) et identifiant (`cas_id`)
+- Statistiques (total substances, substances uniques, répartition par liste)
+- Export CSV
+
+### Fonctionnalités Onglet 2
+- Tableau de tous les changements
+- Filtres par type, liste source, CAS ID
+- Statistiques des changements (insertions, suppressions, modifications)
+- Export CSV
+
+### Fonctionnalités Onglet 3
+- Bouton "Charger et Agréger les Données"
+- Détection automatique des changements
+- Aperçu des changements détectés
+- Tableau récapitulatif par liste source
+- Informations sur les fichiers sources
+
+### Dépendances
+- `streamlit`
+- CORE-01, CORE-02, CORE-03
+
+### Activation/Désactivation
+**Ne peut pas être désactivé** - interface de base requise.
+
+---
+
+## UI-02: Tableau de Bord Tendances
+
+**Statut** : ⚙️ OPTIONNEL (actuellement activé)
+
+### Description
+Onglet "Tendances" avec graphiques d'évolution temporelle.
+
+### Fichiers
+- `app.py` (fonction `display_trends()`)
+
+### Fonctionnalités
+- **Graphique d'évolution** : nombre de substances dans le temps (multi-courbes)
+  - Filtre multiselect pour sélectionner les listes à afficher
+  - Une ligne par liste source + ligne TOTAL
+  - Basé sur la colonne `created_at`
+- **Graphique de tendances** : insertions/suppressions/modifications par date
+  - Filtre selectbox pour filtrer par liste source
+  - Bar chart des changements
+- **Tableau des derniers changements** (10 plus récents)
+- **Statistiques** : total substances, dates première/dernière, total changements
+
+### Dépendances
+- `streamlit`
+- `pandas`
+- CORE-01, CORE-03
+- FEAT-07 (Timestamps) recommandé pour l'évolution temporelle
+
+### Activation
+**Déjà activé par défaut.**
+
+### Désactivation
+
+1. **Dans `app.py`**, fonction `main()`, retirer l'onglet :
+```python
+# AVANT
+tabs = st.tabs(["Données Agrégées", "Historique des Changements", "Tendances", "Ma Surveillance", "Mise à Jour"])
+
+# APRÈS
+tabs = st.tabs(["Données Agrégées", "Historique des Changements", "Mise à Jour"])
+```
+
+2. Retirer l'appel à la fonction :
+```python
+# SUPPRIMER ces lignes
+with tabs[2]:
+    display_trends(data_manager, history_manager)
+```
+
+3. Optionnel : Supprimer la fonction `display_trends()` dans `app.py`
+
+---
+
+## FEAT-01: Export PDF
+
+**Statut** : ⚙️ OPTIONNEL (actuellement activé)
+
+### Description
+Génération de rapports PDF professionnels avec statistiques et graphiques.
+
+### Fichiers
+- `backend/pdf_exporter.py`
+- `app.py` (section export PDF en haut)
+
+### Fonctionnalités
+- Génération automatique de rapports PDF A4
+- **Sections du rapport** :
+  - Page titre avec date/heure
+  - Statistiques générales (substances, listes, changements)
+  - Graphiques (bar chart répartition, pie chart changements)
+  - Tableaux (derniers changements, substances)
+- Téléchargement direct depuis l'interface
+- Sauvegarde automatique dans `data/reports/`
+- Nom de fichier avec timestamp
+
+### Dépendances
+- `reportlab >= 4.0.0`
+- `matplotlib >= 3.8.0`
+- CORE-01, CORE-03
+
+### Activation
+**Déjà activé par défaut.**
+
+### Désactivation
+
+1. **Supprimer le module** :
 ```bash
-# Créer l'environnement virtuel
-python -m venv venv
+rm backend/pdf_exporter.py
+```
 
-# Activer (Windows Git Bash)
+2. **Dans `app.py`**, retirer les imports :
+```python
+# SUPPRIMER
+from backend.pdf_exporter import PDFExporter
+```
+
+3. **Dans `app.py`**, fonction `main()`, retirer la section PDF :
+```python
+# SUPPRIMER ces lignes
+st.divider()
+display_pdf_export_section(data_manager, history_manager)
+st.divider()
+```
+
+4. **Supprimer la fonction** `display_pdf_export_section()` dans `app.py`
+
+5. **Désinstaller les dépendances** (si non utilisées ailleurs) :
+```bash
+pip uninstall reportlab matplotlib
+```
+
+6. **Mettre à jour** `requirements.txt` :
+```bash
+pip freeze > requirements.txt
+```
+
+---
+
+## FEAT-02: Logging Centralisé
+
+**Statut** : ⚙️ OPTIONNEL (actuellement activé)
+
+### Description
+Système de logging avec rotation de fichiers et niveaux de criticité.
+
+### Fichiers
+- `backend/logger.py`
+- Utilisé dans tous les modules backend
+
+### Fonctionnalités
+- **Niveaux** : DEBUG, INFO, WARNING, ERROR, CRITICAL
+- **Rotation** : 10MB max par fichier, 5 fichiers de backup
+- **Fichiers séparés** :
+  - `logs/echa_app_debug.log` : tous les messages
+  - `logs/echa_app_info.log` : INFO et plus
+  - `logs/echa_app_error.log` : ERROR et CRITICAL uniquement
+- **Console** : affiche INFO et plus en temps réel
+- **Format** : `YYYY-MM-DD HH:MM:SS - nom - NIVEAU - fichier:ligne - message`
+- **Encodage UTF-8** pour caractères spéciaux
+
+### Méthodes Principales
+- `debug(message)`
+- `info(message)`
+- `warning(message)`
+- `error(message, exc_info=False)`
+- `critical(message, exc_info=False)`
+- `exception(message)` : log exception avec traceback
+- `get_logger()` : singleton
+
+### Dépendances
+- `logging` (standard library)
+
+### Activation
+**Déjà activé par défaut.**
+
+### Désactivation
+
+1. **Supprimer le module** :
+```bash
+rm backend/logger.py
+```
+
+2. **Dans TOUS les modules backend**, retirer les imports et appels :
+```python
+# SUPPRIMER
+from backend.logger import get_logger
+logger = get_logger()
+logger.info(...)
+logger.error(...)
+# etc.
+```
+
+3. **Optionnel** : Remplacer par des `print()` si besoin de traces :
+```python
+# Remplacer logger.info("message") par
+print("[INFO] message")
+```
+
+4. **Supprimer le dossier logs** :
+```bash
+rm -rf logs/
+```
+
+---
+
+## FEAT-03: Archivage Automatique
+
+**Statut** : ⚙️ OPTIONNEL (actuellement activé)
+
+### Description
+Copie automatique des fichiers Excel sources avec timestamp avant chaque mise à jour.
+
+### Fichiers
+- `backend/data_manager.py` (méthode `archive_source_files()`)
+- `app.py` (appel dans fonction `display_update_section()`)
+
+### Fonctionnalités
+- Copie automatique de `data/input/` vers `data/archives/`
+- Ajout de timestamp au nom : `fichier_YYYYMMDD_HHMMSS.xlsx`
+- Exemple : `testa.xlsx` → `testa_20251231_153045.xlsx`
+- Les fichiers originaux restent dans `input/`
+- Création automatique du dossier `archives/` si inexistant
+- Logging de toutes les opérations
+
+### Dépendances
+- `shutil` (standard library)
+- `datetime` (standard library)
+- FEAT-02 (Logger) recommandé
+
+### Activation
+**Déjà activé par défaut.**
+
+### Désactivation
+
+1. **Dans `backend/data_manager.py`**, retirer la méthode :
+```python
+# SUPPRIMER la méthode archive_source_files() entièrement
+```
+
+2. **Dans `app.py`**, fonction `display_update_section()`, retirer l'appel :
+```python
+# SUPPRIMER ce bloc
+with st.spinner("Archivage des fichiers sources..."):
+    try:
+        archived_count = data_manager.archive_source_files()
+        if archived_count > 0:
+            st.info(f"📦 {archived_count} fichiers archivés dans data/archives/")
+    except Exception as e:
+        st.warning(f"Avertissement lors de l'archivage: {str(e)}")
+```
+
+3. **Optionnel** : Supprimer le dossier archives :
+```bash
+rm -rf data/archives/
+```
+
+---
+
+## FEAT-04: Système de Watchlists
+
+**Statut** : ⚙️ OPTIONNEL (actuellement activé)
+
+### Description
+Création et gestion de listes de surveillance personnalisées pour substances chimiques.
+
+### Fichiers
+- `backend/watchlist_manager.py`
+- `app.py` (section watchlist dans onglet "Données Agrégées" + onglet "Ma Surveillance")
+
+### Fonctionnalités
+- **CRUD complet** : créer, lire, modifier, supprimer des watchlists
+- Ajout/suppression de CAS IDs à une watchlist
+- **Métadonnées** : nom, description, tags
+- Export/Import JSON de watchlists
+- Statistiques et recherches
+- Stockage dans `data/watchlists.json`
+
+### Méthodes Principales
+- `create_watchlist(name, description, tags)`
+- `get_watchlist(watchlist_id)`
+- `update_watchlist(watchlist_id, ...)`
+- `delete_watchlist(watchlist_id)`
+- `add_cas_to_watchlist(watchlist_id, cas_id)`
+- `remove_cas_from_watchlist(watchlist_id, cas_id)`
+- `is_cas_in_any_watchlist(cas_id)`
+- `get_watchlists_for_cas(cas_id)`
+- `export_watchlist(watchlist_id, path)`
+- `import_watchlist(path)`
+- `get_statistics()`
+
+### Dépendances
+- `uuid` (standard library)
+- `json` (standard library)
+- FEAT-02 (Logger) recommandé
+
+### Activation
+**Déjà activé par défaut.**
+
+### Désactivation
+
+1. **Supprimer le module** :
+```bash
+rm backend/watchlist_manager.py
+```
+
+2. **Dans `app.py`**, retirer l'import :
+```python
+# SUPPRIMER
+from backend.watchlist_manager import WatchlistManager
+```
+
+3. **Dans `app.py`**, fonction `initialize_managers()`, retirer :
+```python
+# SUPPRIMER
+watchlist_manager = WatchlistManager()
+# ET dans le return
+return data_manager, change_detector, history_manager  # Sans watchlist_manager
+```
+
+4. **Dans `app.py`**, fonction `display_aggregated_data()` :
+   - Retirer le paramètre `watchlist_manager`
+   - Supprimer toute la section "🔖 Gestion des Watchlists"
+
+5. **Dans `app.py`**, fonction `main()` :
+   - Retirer l'onglet "Ma Surveillance" des tabs
+   - Supprimer l'appel à `display_watchlist_surveillance()`
+
+6. **Supprimer la fonction** `display_watchlist_surveillance()` entière
+
+7. **Dans `app.py`**, fonction `display_update_section()` :
+   - Retirer le paramètre `watchlist_manager`
+   - Retirer l'appel à `alert_system.create_alerts_from_changes()` (dépend de watchlists)
+
+8. **Supprimer le fichier JSON** :
+```bash
+rm data/watchlists.json
+```
+
+---
+
+## FEAT-05: Analyse de Risque
+
+**Statut** : ⚙️ OPTIONNEL (actuellement activé)
+
+### Description
+Calcul de scores de risque intelligents pour les substances surveillées avec prédictions.
+
+### Fichiers
+- `backend/risk_analyzer.py`
+- `app.py` (utilisé dans onglet "Ma Surveillance")
+
+### Fonctionnalités
+- **Calcul de score de risque** (0-100) avec 4 composantes :
+  - Fréquence de modifications (30%)
+  - Présence dans plusieurs listes (20%)
+  - Type de changement récent (30%)
+  - Ancienneté de la substance (20%)
+- **Niveaux de risque** :
+  - 🟢 Faible (0-25)
+  - 🟡 Moyen (26-50)
+  - 🟠 Élevé (51-75)
+  - 🔴 Critique (76-100)
+- **Prédictions** : estimation du prochain changement (ML basique)
+- **Détection d'anomalies** : changements inhabituels
+- Top N substances à risque
+
+### Méthodes Principales
+- `calculate_risk_score(cas_id, aggregated_df, history_df)`
+- `calculate_scores_for_watchlist(cas_ids, aggregated_df, history_df)`
+- `predict_next_change(cas_id, history_df)`
+- `detect_anomalies(cas_id, history_df)`
+- `get_top_risk_substances(cas_ids, aggregated_df, history_df, top_n)`
+
+### Dépendances
+- `pandas`
+- `datetime` (standard library)
+- CORE-01, CORE-03
+- FEAT-02 (Logger) recommandé
+- FEAT-04 (Watchlists) **REQUIS**
+
+### Activation
+**Déjà activé par défaut.**
+
+### Désactivation
+
+**⚠️ Attention** : Requiert FEAT-04 (Watchlists). Si vous désactivez FEAT-04, vous DEVEZ désactiver FEAT-05.
+
+1. **Supprimer le module** :
+```bash
+rm backend/risk_analyzer.py
+```
+
+2. **Dans `app.py`**, retirer l'import :
+```python
+# SUPPRIMER
+from backend.risk_analyzer import RiskAnalyzer
+```
+
+3. **Dans `app.py`**, fonction `initialize_managers()`, retirer :
+```python
+# SUPPRIMER
+risk_analyzer = RiskAnalyzer()
+# ET dans le return
+```
+
+4. **Dans `app.py`**, fonction `display_aggregated_data()` :
+   - Retirer le paramètre `risk_analyzer`
+
+5. **Dans `app.py`**, fonction `display_watchlist_surveillance()` :
+   - Retirer toute la section "Calcul des scores de risque"
+   - Retirer les colonnes liées au scoring dans le tableau
+   - Retirer les statistiques de risque
+
+6. **Dans `app.py`**, fonction `display_update_section()` :
+   - Retirer le paramètre `risk_analyzer`
+   - Retirer l'appel dans `alert_system.create_alerts_from_changes()` (si FEAT-06 activé)
+
+---
+
+## FEAT-06: Système d'Alertes
+
+**Statut** : ⚙️ OPTIONNEL (actuellement activé)
+
+### Description
+Création et gestion d'alertes automatiques lors de changements sur substances watchlistées.
+
+### Fichiers
+- `backend/alert_system.py`
+- `app.py` (section alertes dans onglet "Ma Surveillance" + badge en haut)
+
+### Fonctionnalités
+- **Création automatique d'alertes** lors de changements détectés
+- Système de notifications **lues/non lues**
+- **Alertes haute priorité** (risque élevé/critique)
+- Filtrage par watchlist, CAS ID, type de changement
+- Nettoyage automatique des anciennes alertes
+- Stockage dans `data/alerts.json`
+- **Badge de notifications** en temps réel
+
+### Méthodes Principales
+- `create_alert(cas_id, cas_name, watchlist_id, watchlist_name, change_type, ...)`
+- `create_alerts_from_changes(changes_df, watchlist_manager, risk_analyzer, ...)`
+- `get_unread_alerts()`
+- `get_unread_count()`
+- `mark_as_read(alert_id)`
+- `mark_all_as_read()`
+- `get_alerts_by_watchlist(watchlist_id)`
+- `get_alerts_by_cas(cas_id)`
+- `get_high_priority_alerts()`
+- `clear_old_alerts(days)`
+- `get_statistics()`
+- `to_dataframe(alerts)`
+
+### Dépendances
+- `pandas`
+- `uuid`, `json`, `datetime` (standard library)
+- CORE-01, CORE-03
+- FEAT-02 (Logger) recommandé
+- FEAT-04 (Watchlists) **REQUIS**
+- FEAT-05 (Risk Analyzer) recommandé pour enrichissement
+
+### Activation
+**Déjà activé par défaut.**
+
+### Désactivation
+
+**⚠️ Attention** : Requiert FEAT-04 (Watchlists). Si vous désactivez FEAT-04, vous DEVEZ désactiver FEAT-06.
+
+1. **Supprimer le module** :
+```bash
+rm backend/alert_system.py
+```
+
+2. **Dans `app.py`**, retirer l'import :
+```python
+# SUPPRIMER
+from backend.alert_system import AlertSystem
+```
+
+3. **Dans `app.py`**, fonction `initialize_managers()`, retirer :
+```python
+# SUPPRIMER
+alert_system = AlertSystem()
+# ET dans le return
+```
+
+4. **Dans `app.py`**, fonction `main()`, retirer le badge :
+```python
+# SUPPRIMER
+unread_count = alert_system.get_unread_count()
+if unread_count > 0:
+    st.warning(f"🔔 {unread_count} alerte(s) non lue(s) - Consultez l'onglet 'Ma Surveillance'")
+```
+
+5. **Dans `app.py`**, fonction `display_watchlist_surveillance()` :
+   - Retirer toute la section "🔔 Alertes et Notifications"
+
+6. **Dans `app.py`**, fonction `display_update_section()` :
+   - Retirer le paramètre `alert_system`
+   - Supprimer le bloc de création d'alertes :
+```python
+# SUPPRIMER
+alert_system.create_alerts_from_changes(
+    changes_df,
+    watchlist_manager,
+    risk_analyzer,
+    aggregated_df,
+    history_manager.load_history()
+)
+```
+
+7. **Supprimer le fichier JSON** :
+```bash
+rm data/alerts.json
+```
+
+---
+
+## FEAT-07: Timestamps et Tracking
+
+**Statut** : ⚙️ OPTIONNEL (actuellement activé)
+
+### Description
+Ajout de colonnes `created_at` et `updated_at` dans le tableau agrégé pour tracking temporel.
+
+### Fichiers
+- `backend/data_manager.py` (méthode `_update_timestamps()`)
+- `app.py` (affichage des colonnes)
+
+### Fonctionnalités
+- **Colonne `created_at`** : Date de première apparition de la substance
+- **Colonne `updated_at`** : Date de dernière modification des données
+- **Clé unique** : `cas_id + source_list` pour identifier les substances
+- Comparaison intelligente : exclut les colonnes de métadonnées
+- Mise à jour conditionnelle basée sur les changements
+
+### Méthodes Principales
+- `_update_timestamps(new_df)` : Ajoute ou met à jour les timestamps
+- `_dataframes_are_equal(df1, df2)` : Compare en excluant timestamps
+
+### Dépendances
+- `pandas`
+- `datetime` (standard library)
+- CORE-01
+
+### Activation
+**Déjà activé par défaut.**
+
+### Désactivation
+
+1. **Dans `backend/data_manager.py`**, fonction `aggregate_all_data()` :
+```python
+# SUPPRIMER cet appel
+aggregated_df = self._update_timestamps(aggregated_df)
+```
+
+2. **Dans `backend/data_manager.py`**, fonction `save_aggregated_data()` :
+```python
+# MODIFIER la comparaison pour ne plus exclure created_at et updated_at
+# AVANT
+if old_df is not None and not old_df.empty:
+    if self._dataframes_are_equal(old_df, df):
+        ...
+
+# APRÈS (comparaison directe)
+if old_df is not None and not old_df.empty:
+    if old_df.equals(df):
+        ...
+```
+
+3. **Dans `backend/data_manager.py`**, supprimer la méthode :
+```python
+# SUPPRIMER la méthode _update_timestamps() entièrement
+```
+
+4. **Dans `backend/data_manager.py`**, fonction `_dataframes_are_equal()` :
+```python
+# MODIFIER pour ne plus exclure les timestamps
+# AVANT
+cols_to_exclude = ['created_at', 'updated_at']
+...
+
+# APRÈS
+# Comparaison directe sans exclusions
+return df1.equals(df2)
+```
+
+5. **Dans `app.py`**, fonction `display_update_section()` :
+```python
+# MODIFIER pour ne plus exclure created_at et updated_at
+# AVANT
+cols_to_drop = ['source_list', 'created_at', 'updated_at']
+
+# APRÈS
+cols_to_drop = ['source_list']
+```
+
+---
+
+# Installation et Déploiement
+
+## Prérequis
+- Python 3.8 ou supérieur
+- pip
+- Git (pour versionning)
+
+## Installation
+
+### 1. Cloner le Projet
+```bash
+git clone https://github.com/benjlombard/rd_labs1.git
+cd rd_labs1
+```
+
+### 2. Créer un Environnement Virtuel
+```bash
+python -m venv venv
+```
+
+### 3. Activer l'Environnement
+
+**Windows (Git Bash)** :
+```bash
 source venv/Scripts/activate
 ```
 
-### Étape 2 : Dépendances
+**Linux/Mac** :
+```bash
+source venv/bin/activate
+```
+
+### 4. Installer les Dépendances
+
+**Installation complète** (toutes fonctionnalités) :
 ```bash
 pip install -r requirements.txt
 ```
 
-Dépendances installées :
-- streamlit >= 1.31.0
-- pandas >= 2.2.0
-- openpyxl >= 3.1.0
-- PyYAML >= 6.0.0
-- reportlab >= 4.0.0 (pour export PDF)
-- matplotlib >= 3.8.0 (pour graphiques PDF)
-
-### Étape 3 : Lancement
+**Installation minimale** (CORE uniquement) :
 ```bash
-# Avec l'environnement virtuel activé
-streamlit run app.py
+pip install streamlit pandas openpyxl PyYAML
+```
 
-# Ou directement
-venv/Scripts/python.exe -m streamlit run app.py
+### 5. Configuration
+
+Éditer `config.yaml` pour adapter :
+- Noms de fichiers
+- Noms de colonnes
+- Fréquence de mise à jour
+- Chemins de dossiers
+
+### 6. Préparer les Données
+
+Placer les fichiers Excel dans `data/input/` :
+- `cas_source.xlsx`
+- `testa.xlsx`
+- `testb.xlsx`
+- `testc.xlsx`
+- `testd.xlsx`
+
+### 7. Lancer l'Application
+
+```bash
+streamlit run app.py
 ```
 
 Application accessible sur :
 - Local : http://localhost:8501
-- Réseau : http://192.168.1.23:8501
+- Réseau : http://[votre-ip]:8501
 
-## Workflow Git Utilisé
+---
 
-### Initialisation
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-```
+# Migration SharePoint
 
-### GitHub CLI
-```bash
-# Installation
-winget install --id GitHub.cli --silent
+## Préparation Future
 
-# Authentification
-gh auth login --web
+Pour migrer vers SharePoint :
 
-# Création du dépôt et push
-gh repo create rd_labs1 --public --source=. --remote=origin --push
-```
-
-### Workflow Feature Branch
-```bash
-# Créer une branche de feature
-git checkout -b feature/optimize-aggregation-save
-
-# Modifications...
-
-# Commit
-git add .
-git commit -m "Message descriptif"
-
-# Merge sur master
-git checkout master
-git merge --no-ff feature/optimize-aggregation-save
-
-# Push
-git push origin master
-git push origin feature/optimize-aggregation-save
-```
-
-## Problèmes Rencontrés et Solutions
-
-### Problème 1 : KeyError lors de la comparaison
-**Symptôme** : Erreur `KeyError: 'info_b_1'` lors de la 2ème exécution de "Charger et Agréger"
-
-**Cause** : Lors de l'agrégation, toutes les colonnes de toutes les listes sont combinées. En filtrant par liste, on obtenait des colonnes d'autres listes remplies de NaN.
-
-**Solution** :
-1. Dans `change_detector.py` : Comparer uniquement les colonnes communes
-2. Dans `app.py` : Filtrer les colonnes avant de comparer
-
-### Problème 2 : Fichier réécrit inutilement
-**Symptôme** : Le fichier `aggregated_data.xlsx` était réécrit même sans changements
-
-**Cause** : La méthode `save_aggregated_data()` écrivait toujours le fichier
-
-**Solution** :
-- Ajout de la méthode `_dataframes_are_equal()` pour comparer les données
-- Modification de `save_aggregated_data()` pour retourner True/False
-- Ne réécrit que si les données ont changé
-- Paramètre `force=True` pour forcer la sauvegarde
-
-### Problème 3 : Erreur Unicode dans les tests
-**Symptôme** : `UnicodeEncodeError` avec les caractères ✓ et ✗
-
-**Cause** : Encodage Windows cp1252 qui ne supporte pas les caractères Unicode
-
-**Solution** : Remplacement par `[OK]` et `[ERREUR]`
-
-## Fonctionnalités Clés Implémentées
-
-### ✅ Gestion des Données
-- Chargement de fichiers Excel multiples
-- Agrégation avec colonne source_list
-- Sauvegarde optimisée (évite réécritures inutiles)
-- Support de multiples listes (extensible)
-
-### ✅ Détection de Changements
-- Insertions détectées
-- Suppressions détectées
-- Modifications détectées avec champs modifiés
-- Comparaison intelligente (colonnes communes uniquement)
-
-### ✅ Historisation
-- Enregistrement de tous les changements
-- Horodatage automatique
-- Archivage optionnel des anciens fichiers
-- Filtres multiples (type, liste, CAS ID)
-
-### ✅ Interface Streamlit
-- 3 onglets fonctionnels
-- Filtres interactifs
-- Messages adaptatifs selon les actions
-- Statistiques visuelles
-- Export CSV
-
-### ✅ Configuration
-- Fichier YAML pour tous les paramètres
-- Noms de colonnes modifiables
-- Fréquence paramétrable
-- Ajout de listes simple
-
-### ✅ Logging et Monitoring
-- Module de logging centralisé avec rotation de fichiers
-- Niveaux DEBUG/INFO/WARNING/ERROR/CRITICAL
-- Fichiers séparés par niveau de criticité
-- Rotation automatique (10MB max, 5 backups)
-- Logs détaillés de toutes les opérations
-- Format standardisé avec timestamps et contexte
-- Console handler pour suivi temps réel
-- Singleton pour instance unique partagée
-
-### ✅ Export PDF et Rapports
-- Génération automatique de rapports PDF professionnels
-- Statistiques complètes (substances, listes, changements)
-- Graphiques intégrés (bar charts, pie charts)
-- Tableaux formatés (changements récents, substances)
-- Mise en page A4 avec styles personnalisés
-- Téléchargement direct depuis l'interface Streamlit
-- Sauvegarde automatique dans data/reports/
-- Nom de fichier avec timestamp (rapport_echa_YYYYMMDD_HHMMSS.pdf)
-
-### ✅ Tableau de Bord de Tendances (Nouvel Onglet)
-- **Graphique d'évolution multi-courbes** :
-  - Filtre multiselect pour sélectionner les listes à afficher
-  - Une ligne par liste source + ligne TOTAL
-  - Évolution cumulée indépendante par liste
-  - Toutes les listes sélectionnées par défaut
-- **Graphique de tendances des changements** (insertions/suppressions/modifications)
-- **Filtres séparés** : multiselect pour évolution, selectbox pour changements
-- Statistiques cumulatives et par période
-- Visualisation des 10 derniers changements
-- Graphiques interactifs avec Streamlit charts
-- Conversion automatique des dates en string pour compatibilité
-
-### ✅ Gestion des Timestamps
-- Colonnes `created_at` et `updated_at` dans le tableau agrégé
-- Tracking automatique de la date de première apparition
-- Mise à jour conditionnelle basée sur les changements de données
-- Affichage dans l'interface Streamlit
-- Persistance entre les mises à jour
-
-### ✅ Archivage Automatique des Fichiers Sources
-- **Archivage automatique lors du chargement** des données
-- Copie de tous les fichiers Excel de `data/input/` vers `data/archives/`
-- **Ajout de timestamp** au nom du fichier : `nom_YYYYMMDD_HHMMSS.xlsx`
-- Les fichiers originaux restent dans `input/` (copie, pas déplacement)
-- Message d'information avec le nombre de fichiers archivés
-- Création automatique du dossier `archives/` si inexistant
-- Logging complet de toutes les opérations
-- Gestion des erreurs sans interruption du processus principal
-
-### ✅ Améliorations UX
-- **Bouton "Reset Filtres"** dans l'onglet Données Agrégées (🔄)
-- **Persistance des filtres** avec `st.session_state`
-- Filtre par liste source dans l'onglet Données Agrégées
-- **Filtre multiselect** avec cases à cocher dans l'onglet Tendances
-- Affichage des dates de modification des fichiers Excel sources
-- Disparition automatique des messages de succès (5 secondes)
-- Meilleure visibilité sur l'état des fichiers
-- Interface réactive avec rafraîchissement automatique (`st.rerun()`)
-
-### ✅ Qualité du Code
-- Architecture modulaire (5 modules backend)
-- Faible complexité cyclomatique
-- Documentation complète
-- Tests unitaires et intégration
-- Logging intégré dans tous les modules
-
-## Migration vers SharePoint (Prévu)
-
-Pour adapter l'application à SharePoint :
-
-1. **Installer dépendances SharePoint** :
+### 1. Installer les Dépendances SharePoint
 ```bash
 pip install Office365-REST-Python-Client
 ```
 
-2. **Modifier config.yaml** :
+### 2. Modifier `config.yaml`
 ```yaml
 sharepoint:
   enabled: true
@@ -699,236 +1000,131 @@ sharepoint:
   credentials_file: "sharepoint_credentials.json"
 ```
 
-3. **Modifier data_manager.py** :
-- Remplacer `pd.read_excel(file_path)` par appels API SharePoint
-- Ajouter méthodes de connexion SharePoint
-- Téléchargement automatique des fichiers
+### 3. Créer `sharepoint_credentials.json`
+```json
+{
+  "client_id": "your-client-id",
+  "client_secret": "your-client-secret",
+  "tenant_id": "your-tenant-id"
+}
+```
 
-## Tests à Effectuer
+### 4. Modifier `backend/data_manager.py`
 
-### Test 1 : Première utilisation
+Ajouter des méthodes SharePoint :
+- `_download_from_sharepoint(file_name)`
+- `_upload_to_sharepoint(file_path, file_name)`
+- `_connect_to_sharepoint()`
+
+Remplacer les appels locaux :
+```python
+# AVANT
+df = pd.read_excel(file_path)
+
+# APRÈS
+if self.config.get('sharepoint', {}).get('enabled'):
+    file_path = self._download_from_sharepoint(file_name)
+df = pd.read_excel(file_path)
+```
+
+---
+
+# Tests
+
+## Tests Unitaires
+
+### Test des Fonctionnalités Watchlist
+```bash
+python test_watchlist_features.py
+```
+
+**9 tests automatiques** :
+1. Initialisation des managers
+2. Création de watchlist
+3. Ajout de CAS ID
+4. Chargement des données
+5. Calcul de score de risque
+6. Prédiction de changement
+7. Détection d'anomalies
+8. Statistiques
+9. Nettoyage
+
+### Tests Manuels
+
+#### Test 1 : Première utilisation
 1. Ouvrir http://localhost:8501
 2. Onglet "Mise à Jour"
 3. Cliquer "Charger et Agréger les Données"
-4. Vérifier : Message vert de succès
+4. Vérifier : Message de succès
 5. Onglet "Données Agrégées" : voir les données
 
-### Test 2 : Pas de changements
-1. Cliquer à nouveau "Charger et Agréger les Données"
-2. Vérifier : Message bleu "fichier non modifié"
-3. Vérifier : Date de modification de `data/aggregated_data.xlsx` inchangée
+#### Test 2 : Pas de changements
+1. Cliquer à nouveau "Charger et Agréger"
+2. Vérifier : Message "fichier non modifié"
+3. Vérifier : Date de modification inchangée
 
-### Test 3 : Avec changements
+#### Test 3 : Avec changements
 1. Modifier un fichier Excel dans `data/input/`
-2. Cliquer "Charger et Agréger les Données"
-3. Vérifier : Message vert + aperçu des changements
+2. Cliquer "Charger et Agréger"
+3. Vérifier : Message de succès + aperçu des changements
 4. Onglet "Historique" : voir les changements
 
-### Test 4 : Filtres
+#### Test 4 : Filtres
 1. Onglet "Données Agrégées"
-2. Tester filtres par cas_name et cas_id
+2. Tester filtres par `cas_name` et `cas_id`
 3. Tester export CSV
 4. Vérifier statistiques
 
-### Test 5 : Export PDF
-1. En haut de l'application, cliquer "Générer Rapport PDF"
-2. Vérifier : Message de succès avec bouton de téléchargement
-3. Télécharger le PDF et ouvrir
-4. Vérifier le contenu :
-   - Page 1 : Titre, date, statistiques générales
-   - Page 2 : Graphique bar chart (répartition) + pie chart (changements)
-   - Page 3 : Tableau des derniers changements (20 max)
-   - Page 4 : Tableau des substances (30 max)
-5. Vérifier : Fichier sauvegardé dans `data/reports/rapport_echa_*.pdf`
+#### Test 5 : Export PDF (si FEAT-01 activé)
+1. Cliquer "Générer Rapport PDF"
+2. Vérifier : Message de succès
+3. Télécharger et ouvrir le PDF
+4. Vérifier : Contenu complet
 
-### Test 6 : Timestamps et Filtres
-1. Onglet "Données Agrégées"
-2. Vérifier : Présence des colonnes `created_at` et `updated_at`
-3. Tester le nouveau filtre "Par liste source"
-4. Vérifier : Filtrage correct des données
-5. Modifier un fichier Excel et recharger
-6. Vérifier : `created_at` conservée, `updated_at` mise à jour
+#### Test 6 : Watchlists (si FEAT-04 activé)
+1. Onglet "Ma Surveillance"
+2. Créer une watchlist
+3. Ajouter des substances depuis "Données Agrégées"
+4. Vérifier le scoring et les statistiques
 
-### Test 7 : Bouton Reset Filtres
-1. Onglet "Données Agrégées"
-2. Appliquer des filtres (cas_name, cas_id, source_list)
-3. Vérifier : Données filtrées affichées
-4. Cliquer sur le bouton "🔄 Reset Filtres"
-5. Vérifier : Tous les filtres réinitialisés
-6. Vérifier : Toutes les données affichées
+#### Test 7 : Alertes (si FEAT-06 activé)
+1. Modifier un fichier Excel avec une substance watchlistée
+2. Effectuer une mise à jour
+3. Vérifier : Badge d'alerte en haut
+4. Onglet "Ma Surveillance" : voir les alertes
 
-### Test 8 : Onglet Tendances - Graphique Multi-Courbes
-1. Onglet "Tendances"
-2. Vérifier : Filtre multiselect "Sélectionner les listes sources"
-3. Vérifier : Toutes les listes cochées par défaut
-4. Vérifier : Graphique affiche une ligne par liste + ligne TOTAL
-5. Décocher certaines listes
-6. Vérifier : Graphique mis à jour dynamiquement
-7. Vérifier : Ligne TOTAL recalculée avec seulement les listes sélectionnées
-8. Tester le filtre selectbox pour les tendances des changements
-9. Vérifier : Statistiques affichées (total, insertions, suppressions, modifications)
-10. Vérifier : Tableau des 10 derniers changements
+---
 
-### Test 9 : Dates des Fichiers
-1. Onglet "Mise à Jour"
-2. Section "Informations sur les Fichiers"
-3. Vérifier : 4ème colonne affiche la date de modification (📅 YYYY-MM-DD HH:MM:SS)
-4. Modifier un fichier Excel
-5. Recharger la page
-6. Vérifier : Date mise à jour
+## Commandes Git Utiles
 
-### Test 10 : Disparition des Messages
-1. Onglet "Mise à Jour"
-2. Cliquer "Charger et Agréger les Données"
-3. Observer les messages de succès/info
-4. Vérifier : Messages disparaissent automatiquement après 5 secondes
-5. Vérifier : Aperçu des changements reste affiché
-
-### Test 11 : Archivage Automatique des Fichiers
-1. Onglet "Mise à Jour"
-2. Vérifier la présence de fichiers Excel dans `data/input/`
-3. Cliquer "Charger et Agréger les Données"
-4. Observer le spinner "Archivage des fichiers sources..."
-5. Vérifier : Message "📦 X fichiers archivés dans data/archives/"
-6. Vérifier le dossier `data/archives/`
-7. Vérifier : Fichiers archivés avec timestamp (ex: `testa_20251231_153045.xlsx`)
-8. Vérifier : Fichiers originaux toujours présents dans `data/input/`
-9. Vérifier : Format du timestamp : YYYYMMDD_HHMMSS
-10. Relancer "Charger et Agréger" : nouveau timestamp, pas d'écrasement
-
-## Commandes Utiles
-
-### Git
 ```bash
-# Voir l'historique
-git log --oneline --graph --all
-
 # Statut
 git status
 
-# Voir les différences
-git diff
+# Voir l'historique
+git log --oneline --graph --all
 
 # Créer une branche
 git checkout -b feature/nom-feature
+
+# Commit
+git add .
+git commit -m "Message descriptif"
 
 # Push
 git push origin master
 ```
 
-### Python
-```bash
-# Activer environnement
-source venv/Scripts/activate
+---
 
-# Installer nouvelle dépendance
-pip install nom-package
-pip freeze > requirements.txt
-
-# Lancer tests
-python test_optimization.py
-```
-
-### Streamlit
-```bash
-# Lancer
-streamlit run app.py
-
-# Sur un port spécifique
-streamlit run app.py --server.port 8502
-
-# En mode développement (auto-reload)
-streamlit run app.py --server.fileWatcherType auto
-```
-
-## Points d'Attention pour Recréation
-
-### 1. Structure des Fichiers Excel
-- Tous doivent avoir `cas_id` et `cas_name`
-- Les autres colonnes doivent être configurées dans config.yaml
-- Respecter la structure décrite
-
-### 2. Configuration
-- Adapter les noms de colonnes dans config.yaml AVANT de lancer
-- Vérifier les chemins de fichiers
-- Ajuster la fréquence de mise à jour
-
-### 3. Environnement Virtuel
-- TOUJOURS utiliser l'environnement virtuel
-- Ne pas commiter le dossier venv/
-- Tenir requirements.txt à jour
-
-### 4. Git
-- Utiliser des branches pour les features
-- Faire des commits atomiques
-- Messages de commit descriptifs
-- Toujours tester avant de merger
-
-### 5. Optimisations
-- La comparaison de DataFrames est activée par défaut
-- Pour forcer la sauvegarde : `save_aggregated_data(df, force=True)`
-- Les colonnes communes sont automatiquement détectées
-
-## Évolutions Futures Possibles
-
-### Court Terme
-- [ ] Ajouter des tests unitaires complets
-- [ ] Créer un script de téléchargement automatique ECHA
-- [ ] Export Excel enrichi avec mise en forme
-- [ ] Comparaison de versions côte à côte
-
-### Moyen Terme
-- [ ] Intégration SharePoint
-- [ ] Notifications par email lors de changements
-- [ ] Personnalisation des rapports PDF (choix des sections)
-- [ ] Recherche avancée multi-critères avec opérateurs logiques
-- [ ] Annotations et notes utilisateur sur les substances
-
-### Long Terme
-- [ ] API REST pour accès externe
-- [ ] Authentification utilisateurs
-- [ ] Multi-tenancy (plusieurs organisations)
-- [ ] Machine Learning pour prédire les changements
-- [ ] Gestion de favoris et watchlists
-
-## Références
+## Support et Contact
 
 - **GitHub** : https://github.com/benjlombard/rd_labs1
-- **Streamlit Docs** : https://docs.streamlit.io
-- **Pandas Docs** : https://pandas.pydata.org/docs/
+- **Documentation Streamlit** : https://docs.streamlit.io
+- **Documentation Pandas** : https://pandas.pydata.org/docs/
 - **ECHA** : https://echa.europa.eu
 
 ---
 
-## 🔄 Pour Recréer le Projet de Zéro
-
-Si tu dois recréer ce projet, voici les étapes EXACTES :
-
-1. **Lire CLAUDE.md** (ce fichier)
-2. **Créer la structure** :
-   - `mkdir -p backend data/input data/archives data/reports logs`
-3. **Créer config.yaml** avec la structure décrite ci-dessus
-4. **Créer les 5 modules backend** :
-   - `logger.py` avec rotation de fichiers et niveaux DEBUG/INFO/ERROR
-   - `data_manager.py` avec optimisation de sauvegarde et logging
-   - `change_detector.py` avec comparaison colonnes communes et logging
-   - `history_manager.py` avec archivage optionnel et logging
-   - `pdf_exporter.py` avec génération de rapports PDF (statistiques, graphiques, tableaux)
-5. **Créer app.py** avec 3 onglets Streamlit + section export PDF
-6. **Créer requirements.txt** avec versions >= flexibles (streamlit, pandas, openpyxl, PyYAML, reportlab, matplotlib)
-7. **Créer .gitignore** excluant venv/, .claude/, test_*.py, logs/, data/reports/
-8. **Créer README.md** avec documentation utilisateur
-9. **Initialiser git** et pousser sur GitHub
-10. **Créer environnement virtuel** et installer dépendances
-11. **Tester** l'application et vérifier les logs
-
-**IMPORTANT** :
-- Ne pas oublier les optimisations et corrections de bugs mentionnées ci-dessus
-- S'assurer que le module logger est créé EN PREMIER (les autres modules en dépendent)
-- Intégrer `get_logger()` dans tous les modules backend pour le logging centralisé
-- Implémenter la gestion des timestamps (created_at, updated_at) dans data_manager.py
-- **Implémenter l'archivage automatique** des fichiers sources avec timestamp
-- Créer l'onglet "Tendances" avec les graphiques d'évolution temporelle (multi-courbes)
-- Ajouter le filtre multiselect pour sélectionner les listes sources à afficher
-- Ajouter le bouton "Reset Filtres" avec persistance via st.session_state
-- Implémenter la disparition automatique des messages après 5 secondes
+**Dernière mise à jour** : 31/12/2025
+**Version** : 2.0 (Architecture Modulaire)

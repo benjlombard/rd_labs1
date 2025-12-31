@@ -11,6 +11,9 @@ from backend.data_manager import DataManager
 from backend.change_detector import ChangeDetector
 from backend.history_manager import HistoryManager
 from backend.pdf_exporter import PDFExporter
+from backend.watchlist_manager import WatchlistManager
+from backend.risk_analyzer import RiskAnalyzer
+from backend.alert_system import AlertSystem
 
 
 st.set_page_config(
@@ -25,22 +28,30 @@ def initialize_managers():
     data_manager = DataManager()
     change_detector = ChangeDetector()
     history_manager = HistoryManager()
-    return data_manager, change_detector, history_manager
+    watchlist_manager = WatchlistManager()
+    risk_analyzer = RiskAnalyzer()
+    alert_system = AlertSystem()
+    return data_manager, change_detector, history_manager, watchlist_manager, risk_analyzer, alert_system
 
 
 def main():
     st.title("Tableau de Bord - Substances Chimiques ECHA")
 
-    data_manager, change_detector, history_manager = initialize_managers()
+    data_manager, change_detector, history_manager, watchlist_manager, risk_analyzer, alert_system = initialize_managers()
 
     st.divider()
     display_pdf_export_section(data_manager, history_manager)
     st.divider()
 
-    tabs = st.tabs(["Données Agrégées", "Historique des Changements", "Tendances", "Mise à Jour"])
+    # Afficher le badge d'alertes non lues en haut
+    unread_count = alert_system.get_unread_count()
+    if unread_count > 0:
+        st.warning(f"🔔 {unread_count} alerte(s) non lue(s) - Consultez l'onglet 'Ma Surveillance'")
+
+    tabs = st.tabs(["Données Agrégées", "Historique des Changements", "Tendances", "Ma Surveillance", "Mise à Jour"])
 
     with tabs[0]:
-        display_aggregated_data(data_manager)
+        display_aggregated_data(data_manager, watchlist_manager, risk_analyzer, history_manager)
 
     with tabs[1]:
         display_change_history(history_manager, data_manager)
@@ -49,10 +60,13 @@ def main():
         display_trends(data_manager, history_manager)
 
     with tabs[3]:
-        display_update_section(data_manager, change_detector, history_manager)
+        display_watchlist_surveillance(watchlist_manager, risk_analyzer, alert_system, data_manager, history_manager)
+
+    with tabs[4]:
+        display_update_section(data_manager, change_detector, history_manager, watchlist_manager, risk_analyzer, alert_system)
 
 
-def display_aggregated_data(data_manager):
+def display_aggregated_data(data_manager, watchlist_manager, risk_analyzer, history_manager):
     st.header("Visualisation des Substances Chimiques")
 
     try:
@@ -61,6 +75,49 @@ def display_aggregated_data(data_manager):
         if aggregated_df.empty:
             st.info("Aucune donnée agrégée disponible. Veuillez effectuer une mise à jour dans l'onglet 'Mise à Jour'.")
             return
+
+        # Section Watchlist Management
+        st.subheader("🔖 Gestion des Watchlists")
+        with st.expander("Ajouter des substances à une watchlist", expanded=False):
+            watchlists = watchlist_manager.load_watchlists()
+
+            if not watchlists:
+                st.info("Aucune watchlist créée. Créez-en une dans l'onglet 'Ma Surveillance'.")
+            else:
+                col1, col2, col3 = st.columns([2, 2, 1])
+
+                with col1:
+                    selected_watchlist = st.selectbox(
+                        "Sélectionner une watchlist",
+                        options=[wl['name'] for wl in watchlists],
+                        key="watchlist_select_agg"
+                    )
+
+                with col2:
+                    cas_id_to_add = st.text_input(
+                        "CAS ID à ajouter",
+                        key="cas_id_to_add_agg"
+                    )
+
+                with col3:
+                    st.write("")  # Spacer
+                    st.write("")  # Spacer
+                    if st.button("➕ Ajouter", key="add_to_watchlist_btn"):
+                        if cas_id_to_add:
+                            # Trouver l'ID de la watchlist
+                            wl_id = next((wl['id'] for wl in watchlists if wl['name'] == selected_watchlist), None)
+                            if wl_id:
+                                success = watchlist_manager.add_cas_to_watchlist(wl_id, cas_id_to_add)
+                                if success:
+                                    st.success(f"✅ {cas_id_to_add} ajouté à '{selected_watchlist}'")
+                                    time.sleep(2)
+                                    st.rerun()
+                                else:
+                                    st.warning(f"⚠️ {cas_id_to_add} est déjà dans '{selected_watchlist}'")
+                        else:
+                            st.error("Veuillez entrer un CAS ID")
+
+        st.divider()
 
         st.subheader("Filtres")
 
@@ -246,7 +303,7 @@ def display_change_history(history_manager, data_manager):
         st.error(f"Erreur lors du chargement de l'historique: {str(e)}")
 
 
-def display_update_section(data_manager, change_detector, history_manager):
+def display_update_section(data_manager, change_detector, history_manager, watchlist_manager, risk_analyzer, alert_system):
     st.header("Mise à Jour des Données")
 
     st.info("Cette section permet de charger les nouvelles données et de détecter les changements.")
@@ -339,6 +396,16 @@ def display_update_section(data_manager, change_detector, history_manager):
 
                         if not changes_df.empty:
                             history_manager.save_changes(changes_df)
+
+                            # Créer les alertes pour les substances watchlistées
+                            alert_system.create_alerts_from_changes(
+                                changes_df,
+                                watchlist_manager,
+                                risk_analyzer,
+                                aggregated_df,
+                                history_manager.load_history()
+                            )
+
                             message_placeholder2.success(f"{len(changes_df)} changements détectés et enregistrés!")
 
                             st.subheader("Aperçu des Changements")
@@ -552,6 +619,244 @@ def display_trends(data_manager, history_manager):
 
     except Exception as e:
         st.error(f"Erreur lors de l'affichage des tendances: {str(e)}")
+        st.exception(e)
+
+
+def display_watchlist_surveillance(watchlist_manager, risk_analyzer, alert_system, data_manager, history_manager):
+    st.header("🎯 Ma Surveillance - Watchlists Intelligentes")
+
+    try:
+        aggregated_df = data_manager.load_aggregated_data()
+        history_df = history_manager.load_history()
+
+        # Section 1: Gestion des Watchlists
+        st.subheader("📋 Gestion des Watchlists")
+
+        col1, col2 = st.columns([3, 1])
+
+        with col1:
+            with st.expander("➕ Créer une nouvelle watchlist", expanded=False):
+                new_wl_name = st.text_input("Nom de la watchlist", key="new_wl_name")
+                new_wl_desc = st.text_area("Description (optionnel)", key="new_wl_desc")
+                new_wl_tags = st.text_input("Tags (séparés par des virgules)", key="new_wl_tags")
+
+                if st.button("Créer la Watchlist", key="create_wl_btn"):
+                    if new_wl_name:
+                        tags = [tag.strip() for tag in new_wl_tags.split(",")] if new_wl_tags else []
+                        watchlist_manager.create_watchlist(new_wl_name, new_wl_desc, tags)
+                        st.success(f"✅ Watchlist '{new_wl_name}' créée avec succès!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Le nom de la watchlist est requis")
+
+        with col2:
+            watchlists = watchlist_manager.load_watchlists()
+            st.metric("Total Watchlists", len(watchlists))
+
+        # Afficher les watchlists existantes
+        if watchlists:
+            st.markdown("#### Watchlists Existantes")
+
+            for wl in watchlists:
+                with st.expander(f"📁 {wl['name']} ({len(wl['cas_ids'])} substances)", expanded=False):
+                    col1, col2 = st.columns([3, 1])
+
+                    with col1:
+                        st.write(f"**Description:** {wl['description'] or 'N/A'}")
+                        st.write(f"**Tags:** {', '.join(wl['tags']) if wl['tags'] else 'N/A'}")
+                        st.write(f"**Créée le:** {wl['created_at'][:10]}")
+                        st.write(f"**Substances surveillées:** {len(wl['cas_ids'])}")
+
+                        if wl['cas_ids']:
+                            st.write(f"**CAS IDs:** {', '.join(wl['cas_ids'][:5])}")
+                            if len(wl['cas_ids']) > 5:
+                                st.write(f"... et {len(wl['cas_ids']) - 5} autres")
+
+                    with col2:
+                        if st.button("🗑️ Supprimer", key=f"delete_wl_{wl['id']}"):
+                            watchlist_manager.delete_watchlist(wl['id'])
+                            st.success(f"Watchlist '{wl['name']}' supprimée")
+                            time.sleep(1)
+                            st.rerun()
+
+        st.divider()
+
+        # Section 2: Alertes
+        st.subheader("🔔 Alertes et Notifications")
+
+        unread_alerts = alert_system.get_unread_alerts()
+        high_priority_alerts = alert_system.get_high_priority_alerts()
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Alertes non lues", len(unread_alerts))
+
+        with col2:
+            st.metric("Alertes haute priorité", len(high_priority_alerts))
+
+        with col3:
+            if st.button("✅ Tout marquer comme lu", key="mark_all_read_btn"):
+                count = alert_system.mark_all_as_read()
+                st.success(f"{count} alertes marquées comme lues")
+                time.sleep(1)
+                st.rerun()
+
+        # Afficher les alertes haute priorité
+        if high_priority_alerts:
+            st.warning("⚠️ Alertes Haute Priorité")
+            alerts_df = alert_system.to_dataframe(high_priority_alerts)
+            if not alerts_df.empty:
+                st.dataframe(alerts_df, use_container_width=True, height=200)
+
+        # Afficher toutes les alertes non lues
+        if unread_alerts:
+            with st.expander(f"📬 Toutes les alertes non lues ({len(unread_alerts)})", expanded=True):
+                alerts_df = alert_system.to_dataframe(unread_alerts)
+                if not alerts_df.empty:
+                    st.dataframe(alerts_df, use_container_width=True, height=300)
+
+        st.divider()
+
+        # Section 3: Tableau des Substances Surveillées avec Scores
+        st.subheader("📊 Substances Surveillées - Analyse de Risque")
+
+        if watchlists and not aggregated_df.empty:
+            # Sélectionner une watchlist
+            selected_wl_name = st.selectbox(
+                "Sélectionner une watchlist à analyser",
+                options=[wl['name'] for wl in watchlists],
+                key="analyze_wl_select"
+            )
+
+            selected_wl = next((wl for wl in watchlists if wl['name'] == selected_wl_name), None)
+
+            if selected_wl and selected_wl['cas_ids']:
+                # Calculer les scores pour toutes les substances de cette watchlist
+                with st.spinner("Calcul des scores de risque..."):
+                    scores_df = risk_analyzer.calculate_scores_for_watchlist(
+                        selected_wl['cas_ids'],
+                        aggregated_df,
+                        history_df
+                    )
+
+                if not scores_df.empty:
+                    # Ajouter les noms de substances
+                    cas_names = {}
+                    for cas_id in selected_wl['cas_ids']:
+                        substance_data = aggregated_df[aggregated_df['cas_id'] == cas_id]
+                        if not substance_data.empty:
+                            cas_names[cas_id] = substance_data.iloc[0]['cas_name']
+                        else:
+                            cas_names[cas_id] = 'Unknown'
+
+                    scores_df['cas_name'] = scores_df['cas_id'].map(cas_names)
+
+                    # Ajouter les prédictions et anomalies
+                    predictions = []
+                    anomalies = []
+
+                    for cas_id in scores_df['cas_id']:
+                        pred = risk_analyzer.predict_next_change(cas_id, history_df)
+                        anom = risk_analyzer.detect_anomalies(cas_id, history_df)
+
+                        predictions.append(pred.get('prediction', 'N/A'))
+                        anomalies.append(anom.get('badge', '') if anom.get('has_anomaly') else '')
+
+                    scores_df['prediction'] = predictions
+                    scores_df['anomalie'] = anomalies
+
+                    # Réorganiser les colonnes pour l'affichage
+                    display_cols = ['badge', 'cas_id', 'cas_name', 'total_score', 'level', 'prediction', 'anomalie']
+                    available_cols = [col for col in display_cols if col in scores_df.columns]
+
+                    # Trier par score décroissant
+                    scores_df_sorted = scores_df.sort_values('total_score', ascending=False)
+
+                    # Afficher le tableau
+                    st.dataframe(
+                        scores_df_sorted[available_cols],
+                        use_container_width=True,
+                        height=400
+                    )
+
+                    # Statistiques
+                    col1, col2, col3, col4 = st.columns(4)
+
+                    with col1:
+                        st.metric("Substances surveillées", len(scores_df))
+
+                    with col2:
+                        avg_score = scores_df['total_score'].mean()
+                        st.metric("Score moyen", f"{avg_score:.1f}")
+
+                    with col3:
+                        critical_count = len(scores_df[scores_df['level'] == 'Critique'])
+                        st.metric("🔴 Critiques", critical_count)
+
+                    with col4:
+                        high_count = len(scores_df[scores_df['level'] == 'Élevé'])
+                        st.metric("🟠 Élevés", high_count)
+
+                    # Graphique de répartition des scores
+                    st.subheader("📈 Répartition des Niveaux de Risque")
+                    risk_counts = scores_df['level'].value_counts()
+                    st.bar_chart(risk_counts)
+
+                    # Option de retirer une substance de la watchlist
+                    st.divider()
+                    st.markdown("#### ➖ Retirer une substance de cette watchlist")
+
+                    col1, col2 = st.columns([3, 1])
+
+                    with col1:
+                        cas_to_remove = st.selectbox(
+                            "Sélectionner un CAS ID à retirer",
+                            options=selected_wl['cas_ids'],
+                            key="remove_cas_select"
+                        )
+
+                    with col2:
+                        st.write("")
+                        st.write("")
+                        if st.button("➖ Retirer", key="remove_cas_btn"):
+                            success = watchlist_manager.remove_cas_from_watchlist(selected_wl['id'], cas_to_remove)
+                            if success:
+                                st.success(f"✅ {cas_to_remove} retiré de '{selected_wl_name}'")
+                                time.sleep(1)
+                                st.rerun()
+
+            else:
+                st.info(f"Aucune substance dans la watchlist '{selected_wl_name}'. Ajoutez des substances depuis l'onglet 'Données Agrégées'.")
+
+        elif not watchlists:
+            st.info("Créez d'abord une watchlist pour commencer la surveillance.")
+        else:
+            st.info("Aucune donnée agrégée disponible. Effectuez une mise à jour dans l'onglet 'Mise à Jour'.")
+
+        # Section 4: Statistiques générales
+        st.divider()
+        st.subheader("📊 Statistiques Générales")
+
+        stats = watchlist_manager.get_statistics()
+        alert_stats = alert_system.get_statistics()
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Total watchlists", stats['total_watchlists'])
+            st.metric("Substances surveillées", stats['total_watched_substances'])
+
+        with col2:
+            st.metric("Total alertes", alert_stats['total_alerts'])
+            st.metric("Alertes non lues", alert_stats['unread_count'])
+
+        with col3:
+            st.metric("Alertes haute priorité", alert_stats['high_priority_unread'])
+
+    except Exception as e:
+        st.error(f"Erreur lors de l'affichage de la surveillance: {str(e)}")
         st.exception(e)
 
 
