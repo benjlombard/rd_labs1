@@ -53,25 +53,299 @@ def main():
     if unread_count > 0:
         st.warning(f"🔔 {unread_count} alerte(s) non lue(s) - Consultez l'onglet 'Ma Surveillance'")
 
-    tabs = st.tabs(["Données Agrégées", "Historique des Changements", "Tendances", "Ma Surveillance", "Calendrier", "Mise à Jour"])
+    tabs = st.tabs(["📊 Dashboard", "Données Agrégées", "Historique des Changements", "Tendances", "Ma Surveillance", "Timeline", "Calendrier", "Réseau", "Mise à Jour"])
 
     with tabs[0]:
-        display_aggregated_data(data_manager, watchlist_manager, risk_analyzer, history_manager)
+        display_dashboard(data_manager, history_manager, risk_analyzer, alert_system)
 
     with tabs[1]:
-        display_change_history(history_manager, data_manager)
+        display_aggregated_data(data_manager, watchlist_manager, risk_analyzer, history_manager)
 
     with tabs[2]:
-        display_trends(data_manager, history_manager)
+        display_change_history(history_manager, data_manager)
 
     with tabs[3]:
-        display_watchlist_surveillance(watchlist_manager, risk_analyzer, alert_system, data_manager, history_manager)
+        display_trends(data_manager, history_manager)
 
     with tabs[4]:
-        display_calendar_heatmap(history_manager, data_manager, risk_analyzer)
+        display_watchlist_surveillance(watchlist_manager, risk_analyzer, alert_system, data_manager, history_manager)
 
     with tabs[5]:
+        display_substance_timeline(data_manager, history_manager, risk_analyzer)
+
+    with tabs[6]:
+        display_calendar_heatmap(history_manager, data_manager, risk_analyzer)
+
+    with tabs[7]:
+        display_network_graph(data_manager, history_manager, risk_analyzer)
+
+    with tabs[8]:
         display_update_section(data_manager, change_detector, history_manager, watchlist_manager, risk_analyzer, alert_system)
+
+
+def display_dashboard(data_manager, history_manager, risk_analyzer, alert_system):
+    """Affiche le dashboard analytique exécutif"""
+    st.header("📊 Dashboard Analytique Exécutif")
+    st.markdown("Vue d'ensemble des indicateurs clés de performance et métriques essentielles")
+
+    # Charger les données
+    aggregated_df = data_manager.load_aggregated_data()
+    history_df = history_manager.load_history()
+
+    if aggregated_df.empty:
+        st.info("Aucune donnée disponible. Veuillez charger les données dans l'onglet 'Mise à Jour'.")
+        return
+
+    # Calculer toutes les métriques
+    with st.spinner("Calcul des métriques du dashboard..."):
+        metrics = risk_analyzer.calculate_dashboard_metrics(aggregated_df, history_df)
+
+    # Section 1: Health Score Global
+    st.divider()
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        # Jauge Health Score
+        health_fig = risk_analyzer.generate_gauge_chart(
+            metrics['health_score'],
+            "Health Score Global",
+            100
+        )
+        st.plotly_chart(health_fig, use_container_width=True)
+
+    with col2:
+        st.markdown("### 🎯 Indicateurs Clés")
+        # 4 KPIs principaux
+        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+
+        with kpi1:
+            trend_icon = "↗️" if metrics['trend_7d'] > 0 else ("↘️" if metrics['trend_7d'] < 0 else "→")
+            st.metric(
+                "Substances",
+                metrics['total_substances'],
+                help="Nombre total de substances chimiques suivies"
+            )
+
+        with kpi2:
+            st.metric(
+                "Changements (7j)",
+                metrics['changes_7d'],
+                f"{metrics['trend_7d']:+.1f}%",
+                help="Évolution vs 7 jours précédents"
+            )
+
+        with kpi3:
+            st.metric(
+                "Score Risque Moyen",
+                f"{metrics['avg_risk_score']:.1f}",
+                help="Score de risque moyen de toutes les substances"
+            )
+
+        with kpi4:
+            unread = alert_system.get_unread_count() if alert_system else 0
+            st.metric(
+                "Alertes",
+                unread,
+                help="Nombre d'alertes non lues"
+            )
+
+    # Section 2: Top 5 Substances Critiques
+    st.divider()
+    st.subheader("🚨 Top 5 Substances Critiques")
+
+    if metrics['top_critical']:
+        for idx, substance in enumerate(metrics['top_critical'], 1):
+            col1, col2, col3 = st.columns([0.5, 3, 1])
+
+            with col1:
+                st.markdown(f"**#{idx}**")
+
+            with col2:
+                st.markdown(f"{substance['badge']} **{substance['cas_name']}** ({substance['cas_id']})")
+
+            with col3:
+                st.markdown(f"**Score: {substance['score']:.1f}**")
+
+        st.divider()
+    else:
+        st.info("Aucune donnée de risque disponible.")
+
+    # Section 3: Graphiques de Répartition
+    st.subheader("📈 Répartitions et Tendances")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Donut chart - Répartition par niveau de risque
+        if metrics['risk_distribution']:
+            labels = list(metrics['risk_distribution'].keys())
+            values = list(metrics['risk_distribution'].values())
+            colors = ['#2ecc71', '#f39c12', '#e67e22', '#e74c3c']
+
+            fig_risk = go.Figure(data=[go.Pie(
+                labels=labels,
+                values=values,
+                hole=0.4,
+                marker=dict(colors=colors),
+                textinfo='label+value+percent',
+                textposition='outside'
+            )])
+
+            fig_risk.update_layout(
+                title="Répartition par Niveau de Risque",
+                height=350,
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
+            )
+
+            st.plotly_chart(fig_risk, use_container_width=True)
+
+    with col2:
+        # Donut chart - Répartition par liste source
+        if metrics['list_distribution']:
+            labels = list(metrics['list_distribution'].keys())
+            values = list(metrics['list_distribution'].values())
+            list_colors_map = {
+                'testa': '#3498db',
+                'testb': '#9b59b6',
+                'testc': '#e67e22',
+                'testd': '#1abc9c'
+            }
+            colors = [list_colors_map.get(l, '#95a5a6') for l in labels]
+
+            fig_lists = go.Figure(data=[go.Pie(
+                labels=labels,
+                values=values,
+                hole=0.4,
+                marker=dict(colors=colors),
+                textinfo='label+value+percent',
+                textposition='outside'
+            )])
+
+            fig_lists.update_layout(
+                title="Répartition par Liste Source",
+                height=350,
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
+            )
+
+            st.plotly_chart(fig_lists, use_container_width=True)
+
+    # Section 4: Métriques de Changements
+    st.divider()
+    st.subheader("🔄 Activité et Changements")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric(
+            "Total Changements",
+            metrics['total_changes'],
+            help="Nombre total de changements enregistrés"
+        )
+
+    with col2:
+        st.metric(
+            "Changements (30j)",
+            metrics['changes_30d'],
+            help="Changements des 30 derniers jours"
+        )
+
+    with col3:
+        if metrics['total_changes'] > 0:
+            activity_rate = (metrics['changes_30d'] / metrics['total_changes']) * 100
+            st.metric(
+                "Taux d'activité",
+                f"{activity_rate:.1f}%",
+                help="Part des changements sur les 30 derniers jours"
+            )
+        else:
+            st.metric("Taux d'activité", "0%")
+
+    # Bar chart - Types de changements
+    st.divider()
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        fig_changes = go.Figure(data=[
+            go.Bar(
+                name='Insertions',
+                x=['Insertions'],
+                y=[metrics['insertions']],
+                marker_color='#2ecc71'
+            ),
+            go.Bar(
+                name='Suppressions',
+                x=['Suppressions'],
+                y=[metrics['deletions']],
+                marker_color='#e74c3c'
+            ),
+            go.Bar(
+                name='Modifications',
+                x=['Modifications'],
+                y=[metrics['modifications']],
+                marker_color='#f39c12'
+            )
+        ])
+
+        fig_changes.update_layout(
+            title="Répartition des Types de Changements",
+            height=300,
+            showlegend=False,
+            xaxis_title="",
+            yaxis_title="Nombre"
+        )
+
+        st.plotly_chart(fig_changes, use_container_width=True)
+
+    with col2:
+        st.markdown("### 📋 Résumé")
+        st.success(f"✅ **{metrics['insertions']}** Insertions")
+        st.error(f"❌ **{metrics['deletions']}** Suppressions")
+        st.warning(f"✏️ **{metrics['modifications']}** Modifications")
+
+    # Section 5: Statistiques Globales
+    st.divider()
+    st.subheader("📊 Statistiques Globales")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric(
+            "Listes ECHA",
+            metrics['total_lists'],
+            help="Nombre de listes sources actives"
+        )
+
+    with col2:
+        st.metric(
+            "Connexions",
+            metrics['total_connections'],
+            help="Nombre total de connexions substance-liste"
+        )
+
+    with col3:
+        if metrics['total_substances'] > 0:
+            avg_conn = metrics['total_connections'] / metrics['total_substances']
+            st.metric(
+                "Moy. Connexions",
+                f"{avg_conn:.1f}",
+                help="Nombre moyen de listes par substance"
+            )
+        else:
+            st.metric("Moy. Connexions", "0")
+
+    with col4:
+        st.metric(
+            "Score Max",
+            f"{metrics['max_risk_score']:.1f}",
+            help="Score de risque le plus élevé"
+        )
+
+    # Footer avec timestamp
+    st.divider()
+    from datetime import datetime
+    st.caption(f"📅 Dernière mise à jour: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 
 def display_aggregated_data(data_manager, watchlist_manager, risk_analyzer, history_manager):
@@ -1173,6 +1447,356 @@ def display_calendar_heatmap(history_manager, data_manager, risk_analyzer):
             st.info("Aucune donnée à afficher pour cette période.")
     else:
         st.info("Aucun changement trouvé pour les filtres sélectionnés.")
+
+
+def display_substance_timeline(data_manager, history_manager, risk_analyzer):
+    """Affiche la timeline interactive d'une substance"""
+    st.header("🕐 Timeline des Substances")
+    st.markdown("""
+    Visualisez l'historique complet d'une substance avec tous ses événements chronologiques.
+    Chaque point représente un changement (insertion, modification, suppression).
+    """)
+
+    # Charger les données
+    aggregated_df = data_manager.load_aggregated_data()
+    history_df = history_manager.load_history()
+
+    if aggregated_df.empty:
+        st.info("Aucune donnée de substances disponible.")
+        return
+
+    if history_df.empty:
+        st.info("Aucun historique de changements disponible.")
+        return
+
+    # Sélection de la substance
+    st.subheader("🔍 Sélection de la Substance")
+
+    # Obtenir la liste des substances avec leur nom
+    substances_with_names = aggregated_df[['cas_id', 'cas_name']].drop_duplicates()
+    substances_with_names = substances_with_names.sort_values('cas_name')
+
+    # Créer un dictionnaire pour le mapping
+    substance_options = {
+        f"{row['cas_id']} - {row['cas_name']}": row['cas_id']
+        for _, row in substances_with_names.iterrows()
+    }
+
+    # Selectbox avec recherche
+    selected_display = st.selectbox(
+        "Rechercher une substance par CAS ID ou nom",
+        options=list(substance_options.keys()),
+        help="Tapez pour rechercher une substance"
+    )
+
+    selected_cas_id = substance_options[selected_display]
+
+    # Filtre par type d'événement
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        event_filter = st.selectbox(
+            "Filtrer par type d'événement",
+            options=["Tous", "insertion", "suppression", "modification"],
+            index=0
+        )
+
+    with col2:
+        # Compter le nombre d'événements pour cette substance
+        substance_events = history_df[history_df['cas_id'] == selected_cas_id]
+        st.metric("Événements Totaux", len(substance_events))
+
+    # Générer la timeline
+    st.divider()
+    st.subheader("📅 Timeline Chronologique")
+
+    with st.spinner("Génération de la timeline..."):
+        try:
+            fig = risk_analyzer.generate_substance_timeline(
+                selected_cas_id,
+                history_df,
+                aggregated_df,
+                event_type_filter=event_filter if event_filter != "Tous" else None
+            )
+
+            # Afficher le graphique
+            st.plotly_chart(fig, use_container_width=True)
+
+        except Exception as e:
+            st.error(f"Erreur lors de la génération de la timeline: {str(e)}")
+            logger.error(f"Erreur timeline: {e}", exc_info=True)
+
+    # Graphique d'évolution du score de risque
+    st.divider()
+    st.subheader("📈 Évolution du Score de Risque")
+
+    with st.spinner("Calcul de l'évolution du score..."):
+        try:
+            fig_score = risk_analyzer.generate_risk_score_evolution(
+                selected_cas_id,
+                history_df,
+                aggregated_df
+            )
+
+            # Afficher le graphique
+            st.plotly_chart(fig_score, use_container_width=True)
+
+            # Note explicative
+            st.info("""
+            **Note**: Le score de risque est calculé de manière cumulative :
+            - **Insertion** dans une nouvelle liste : +10 points
+            - **Modification** des données : +5 points
+            - **Suppression** d'une liste : -15 points
+
+            Le score est limité entre 0 (aucun risque) et 100 (risque maximum).
+            """)
+
+        except Exception as e:
+            st.error(f"Erreur lors de la génération du graphique d'évolution: {str(e)}")
+            logger.error(f"Erreur évolution score: {e}", exc_info=True)
+
+    # Tableau détaillé des événements
+    st.divider()
+    st.subheader("📋 Détails des Événements")
+
+    if not substance_events.empty:
+        # Préparer le DataFrame pour l'affichage
+        events_display = substance_events.copy()
+        events_display['timestamp'] = pd.to_datetime(events_display['timestamp'])
+        events_display = events_display.sort_values('timestamp', ascending=False)
+
+        # Sélectionner et renommer les colonnes
+        columns_to_display = ['timestamp', 'change_type', 'source_list']
+        if 'modified_fields' in events_display.columns:
+            columns_to_display.append('modified_fields')
+
+        events_display = events_display[columns_to_display]
+        events_display.columns = ['Date/Heure', 'Type', 'Liste Source', 'Champs Modifiés'] if 'modified_fields' in columns_to_display else ['Date/Heure', 'Type', 'Liste Source']
+
+        # Appliquer le filtre si nécessaire
+        if event_filter != "Tous":
+            events_display = events_display[events_display['Type'] == event_filter]
+
+        # Afficher le tableau
+        st.dataframe(
+            events_display,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # Statistiques par type
+        st.divider()
+        st.subheader("📊 Statistiques par Type d'Événement")
+
+        col1, col2, col3 = st.columns(3)
+
+        insertions = len(substance_events[substance_events['change_type'] == 'insertion'])
+        suppressions = len(substance_events[substance_events['change_type'] == 'suppression'])
+        modifications = len(substance_events[substance_events['change_type'] == 'modification'])
+
+        with col1:
+            st.success(f"**✅ Insertions**")
+            st.metric("", insertions)
+
+        with col2:
+            st.error(f"**❌ Suppressions**")
+            st.metric("", suppressions)
+
+        with col3:
+            st.warning(f"**✏️ Modifications**")
+            st.metric("", modifications)
+
+        # Première et dernière occurrence
+        if not substance_events.empty:
+            substance_events['timestamp'] = pd.to_datetime(substance_events['timestamp'])
+            first_event = substance_events['timestamp'].min()
+            last_event = substance_events['timestamp'].max()
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.info(f"**Premier événement** : {first_event.strftime('%Y-%m-%d %H:%M')}")
+            with col2:
+                st.info(f"**Dernier événement** : {last_event.strftime('%Y-%m-%d %H:%M')}")
+
+    else:
+        st.info("Aucun événement enregistré pour cette substance.")
+
+
+def display_network_graph(data_manager, history_manager, risk_analyzer):
+    """Affiche le graphe de réseau des substances et listes"""
+    st.header("🕸️ Graphe de Réseau")
+    st.markdown("""
+    Visualisez les relations entre substances et listes ECHA sous forme de réseau interactif.
+    Les nœuds représentent les substances (cercles) et les listes (carrés), reliés par des liens.
+    """)
+
+    # Charger les données
+    aggregated_df = data_manager.load_aggregated_data()
+    history_df = history_manager.load_history()
+
+    if aggregated_df.empty:
+        st.info("Aucune donnée de substances disponible.")
+        return
+
+    # Section de filtres
+    st.subheader("🎯 Filtres et Options")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        # Mode de visualisation
+        graph_mode = st.selectbox(
+            "Mode de visualisation",
+            options=["bipartite", "substances_only"],
+            format_func=lambda x: "Substances-Listes" if x == "bipartite" else "Substances uniquement",
+            help="Bipartite: montre substances et listes. Substances uniquement: montre les co-occurrences."
+        )
+
+    with col2:
+        # Filtre par score de risque
+        min_score = st.slider(
+            "Score de risque minimum",
+            min_value=0,
+            max_value=100,
+            value=0,
+            step=5,
+            help="Filtrer les substances ayant un score ≥ à cette valeur"
+        )
+
+    with col3:
+        # Filtre par listes sources
+        all_lists = sorted(aggregated_df['source_list'].unique().tolist())
+        selected_lists = st.multiselect(
+            "Listes sources",
+            options=all_lists,
+            default=all_lists,
+            help="Sélectionner les listes à inclure dans le graphe"
+        )
+
+    # Générer le graphe
+    st.divider()
+
+    if not selected_lists:
+        st.warning("⚠️ Veuillez sélectionner au moins une liste source.")
+        return
+
+    with st.spinner("Génération du graphe de réseau..."):
+        try:
+            fig = risk_analyzer.generate_network_graph(
+                aggregated_df,
+                history_df,
+                min_risk_score=min_score,
+                selected_lists=selected_lists if selected_lists != all_lists else None,
+                graph_mode=graph_mode
+            )
+
+            # Afficher le graphique
+            st.plotly_chart(fig, use_container_width=True)
+
+        except Exception as e:
+            st.error(f"Erreur lors de la génération du graphe: {str(e)}")
+            logger.error(f"Erreur graphe de réseau: {e}", exc_info=True)
+
+    # Statistiques du réseau
+    st.divider()
+    st.subheader("📊 Statistiques du Réseau")
+
+    # Filtrer les données selon les filtres appliqués
+    filtered_df = aggregated_df.copy()
+    if selected_lists and selected_lists != all_lists:
+        filtered_df = filtered_df[filtered_df['source_list'].isin(selected_lists)]
+
+    # Calculer les scores pour filtrer
+    if not history_df.empty:
+        cas_with_score = []
+        for cas_id in filtered_df['cas_id'].unique():
+            score_data = risk_analyzer.calculate_risk_score(cas_id, filtered_df, history_df)
+            if score_data['total_score'] >= min_score:
+                cas_with_score.append(cas_id)
+        filtered_df = filtered_df[filtered_df['cas_id'].isin(cas_with_score)]
+
+    if not filtered_df.empty:
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            num_substances = filtered_df['cas_id'].nunique()
+            st.metric("Substances", num_substances)
+
+        with col2:
+            num_lists = filtered_df['source_list'].nunique()
+            st.metric("Listes", num_lists)
+
+        with col3:
+            num_connections = len(filtered_df)
+            st.metric("Connexions", num_connections)
+
+        with col4:
+            avg_connections = num_connections / num_substances if num_substances > 0 else 0
+            st.metric("Moy. Connexions/Substance", f"{avg_connections:.1f}")
+
+        # Détails par liste
+        st.divider()
+        st.subheader("📋 Répartition par Liste Source")
+
+        list_stats = filtered_df.groupby('source_list')['cas_id'].nunique().reset_index()
+        list_stats.columns = ['Liste', 'Nombre de Substances']
+        list_stats = list_stats.sort_values('Nombre de Substances', ascending=False)
+
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            st.dataframe(
+                list_stats,
+                use_container_width=True,
+                hide_index=True
+            )
+
+        with col2:
+            # Substances dans plusieurs listes
+            substance_counts = filtered_df.groupby('cas_id').size()
+            multi_list_count = len(substance_counts[substance_counts > 1])
+
+            st.metric(
+                "Substances multi-listes",
+                multi_list_count,
+                help="Nombre de substances présentes dans plusieurs listes"
+            )
+
+            if num_substances > 0:
+                percentage = (multi_list_count / num_substances) * 100
+                st.info(f"**{percentage:.1f}%** des substances sont dans plusieurs listes")
+
+        # Légende des couleurs
+        st.divider()
+        st.subheader("🎨 Légende")
+
+        if graph_mode == "bipartite":
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("**Substances (cercles)** :")
+                st.markdown("- 🟢 Vert : Faible risque (0-25)")
+                st.markdown("- 🟡 Jaune : Moyen risque (25-50)")
+                st.markdown("- 🟠 Orange : Élevé risque (50-75)")
+                st.markdown("- 🔴 Rouge : Critique risque (75-100)")
+
+            with col2:
+                st.markdown("**Listes (carrés)** :")
+                st.markdown("- 🔵 Bleu : testa")
+                st.markdown("- 🟣 Violet : testb")
+                st.markdown("- 🟠 Orange : testc")
+                st.markdown("- 🟢 Vert : testd")
+        else:
+            st.markdown("**Substances (cercles)** :")
+            st.markdown("- 🟢 Vert : Faible risque (0-25)")
+            st.markdown("- 🟡 Jaune : Moyen risque (25-50)")
+            st.markdown("- 🟠 Orange : Élevé risque (50-75)")
+            st.markdown("- 🔴 Rouge : Critique risque (75-100)")
+            st.markdown("- **Taille** : Proportionnelle au nombre de listes")
+            st.markdown("- **Liens** : Substances partageant au moins une liste commune")
+
+    else:
+        st.info("Aucune donnée après application des filtres.")
 
 
 if __name__ == "__main__":

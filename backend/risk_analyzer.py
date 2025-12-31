@@ -811,3 +811,931 @@ class RiskAnalyzer:
                 font=dict(size=16, color='red')
             )
             return fig
+
+    def generate_substance_timeline(self,
+                                     cas_id: str,
+                                     history_df: pd.DataFrame,
+                                     aggregated_df: pd.DataFrame,
+                                     event_type_filter: str = None) -> go.Figure:
+        """
+        Génère une timeline interactive pour retracer l'historique complet d'une substance
+
+        Args:
+            cas_id: CAS ID de la substance
+            history_df: DataFrame de l'historique des changements
+            aggregated_df: DataFrame des données agrégées
+            event_type_filter: Filtrer par type d'événement (optionnel)
+
+        Returns:
+            Figure plotly avec la timeline interactive
+        """
+        try:
+            # Récupérer le nom de la substance
+            substance_data = aggregated_df[aggregated_df['cas_id'] == cas_id]
+            if substance_data.empty:
+                cas_name = cas_id
+            else:
+                cas_name = substance_data.iloc[0]['cas_name']
+
+            # Gérer le cas d'un historique vide
+            if history_df.empty:
+                logger.warning(f"Historique vide pour {cas_id}")
+                fig = go.Figure()
+                fig.add_annotation(
+                    text=f"Aucun historique disponible pour {cas_name}",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=16)
+                )
+                return fig
+
+            # Filtrer l'historique pour cette substance
+            substance_history = history_df[history_df['cas_id'] == cas_id].copy()
+
+            if substance_history.empty:
+                logger.warning(f"Aucun historique trouvé pour {cas_id}")
+                fig = go.Figure()
+                fig.add_annotation(
+                    text=f"Aucun événement enregistré pour {cas_name}",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=16)
+                )
+                return fig
+
+            # Convertir timestamp en datetime
+            substance_history['timestamp'] = pd.to_datetime(substance_history['timestamp'])
+
+            # Appliquer le filtre par type d'événement
+            if event_type_filter and event_type_filter != "Tous":
+                substance_history = substance_history[substance_history['change_type'] == event_type_filter]
+
+            if substance_history.empty:
+                fig = go.Figure()
+                fig.add_annotation(
+                    text=f"Aucun événement de type '{event_type_filter}' pour {cas_name}",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=14)
+                )
+                return fig
+
+            # Trier par date
+            substance_history = substance_history.sort_values('timestamp')
+
+            # Définir les couleurs et symboles par type d'événement
+            event_colors = {
+                'insertion': '#2ecc71',      # Vert
+                'suppression': '#e74c3c',    # Rouge
+                'modification': '#f39c12'    # Orange
+            }
+
+            event_symbols = {
+                'insertion': 'circle',
+                'suppression': 'x',
+                'modification': 'diamond'
+            }
+
+            event_labels = {
+                'insertion': '✅ Insertion',
+                'suppression': '❌ Suppression',
+                'modification': '✏️ Modification'
+            }
+
+            # Créer la figure
+            fig = go.Figure()
+
+            # Ajouter les événements par type
+            for event_type in ['insertion', 'suppression', 'modification']:
+                events = substance_history[substance_history['change_type'] == event_type]
+
+                if not events.empty:
+                    # Créer les tooltips
+                    hover_texts = []
+                    for idx, row in events.iterrows():
+                        hover_text = f"<b>{row['timestamp'].strftime('%Y-%m-%d %H:%M')}</b><br>"
+                        hover_text += f"Type: {event_labels[event_type]}<br>"
+                        hover_text += f"Liste: {row['source_list']}<br>"
+                        if 'modified_fields' in row and pd.notna(row['modified_fields']) and row['modified_fields']:
+                            hover_text += f"Champs modifiés: {row['modified_fields']}"
+                        hover_texts.append(hover_text)
+
+                    # Ajouter la trace
+                    fig.add_trace(go.Scatter(
+                        x=events['timestamp'],
+                        y=[1] * len(events),  # Tous sur la même ligne
+                        mode='markers+text',
+                        marker=dict(
+                            size=15,
+                            color=event_colors[event_type],
+                            symbol=event_symbols[event_type],
+                            line=dict(width=2, color='white')
+                        ),
+                        name=event_labels[event_type],
+                        text=[event_labels[event_type].split()[0]] * len(events),
+                        textposition="top center",
+                        textfont=dict(size=10),
+                        hovertemplate='%{hovertext}<extra></extra>',
+                        hovertext=hover_texts
+                    ))
+
+            # Ajouter une ligne de base
+            if not substance_history.empty:
+                min_date = substance_history['timestamp'].min()
+                max_date = substance_history['timestamp'].max()
+
+                fig.add_trace(go.Scatter(
+                    x=[min_date, max_date],
+                    y=[1, 1],
+                    mode='lines',
+                    line=dict(color='lightgray', width=2),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+
+            # Mise en page
+            fig.update_layout(
+                title=dict(
+                    text=f"🕐 Timeline de {cas_name} ({cas_id})",
+                    x=0.5,
+                    xanchor='center',
+                    font=dict(size=18, weight='bold')
+                ),
+                xaxis=dict(
+                    title="Date",
+                    showgrid=True,
+                    gridcolor='lightgray',
+                    tickformat='%Y-%m-%d',
+                    type='date'
+                ),
+                yaxis=dict(
+                    title="",
+                    showticklabels=False,
+                    showgrid=False,
+                    range=[0.5, 1.5]
+                ),
+                height=400,
+                hovermode='closest',
+                plot_bgcolor='white',
+                hoverlabel=dict(
+                    bgcolor="white",
+                    font_size=12,
+                    font_family="Arial"
+                ),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="center",
+                    x=0.5
+                )
+            )
+
+            logger.info(f"Timeline générée pour {cas_id} avec {len(substance_history)} événements")
+            return fig
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération de la timeline pour {cas_id}: {e}", exc_info=True)
+            fig = go.Figure()
+            fig.add_annotation(
+                text=f"Erreur: {str(e)}",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, showarrow=False,
+                font=dict(size=16, color='red')
+            )
+            return fig
+
+    def generate_risk_score_evolution(self,
+                                       cas_id: str,
+                                       history_df: pd.DataFrame,
+                                       aggregated_df: pd.DataFrame) -> go.Figure:
+        """
+        Génère un graphique d'évolution du score de risque dans le temps
+
+        Args:
+            cas_id: CAS ID de la substance
+            history_df: DataFrame de l'historique des changements
+            aggregated_df: DataFrame des données agrégées
+
+        Returns:
+            Figure plotly avec l'évolution du score
+        """
+        try:
+            # Récupérer le nom de la substance
+            substance_data = aggregated_df[aggregated_df['cas_id'] == cas_id]
+            if substance_data.empty:
+                cas_name = cas_id
+            else:
+                cas_name = substance_data.iloc[0]['cas_name']
+
+            # Filtrer l'historique pour cette substance
+            substance_history = history_df[history_df['cas_id'] == cas_id].copy()
+
+            if substance_history.empty:
+                fig = go.Figure()
+                fig.add_annotation(
+                    text=f"Aucun historique pour calculer l'évolution du score",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=14)
+                )
+                return fig
+
+            # Convertir timestamp en datetime
+            substance_history['timestamp'] = pd.to_datetime(substance_history['timestamp'])
+            substance_history = substance_history.sort_values('timestamp')
+
+            # Calculer le score à chaque point dans le temps
+            # Simulation: le score augmente avec les modifications, baisse avec suppressions
+            scores = []
+            dates = []
+            base_score = 50  # Score de départ
+
+            for idx, row in substance_history.iterrows():
+                if row['change_type'] == 'insertion':
+                    base_score += 10
+                elif row['change_type'] == 'modification':
+                    base_score += 5
+                elif row['change_type'] == 'suppression':
+                    base_score -= 15
+
+                # Limiter entre 0 et 100
+                base_score = max(0, min(100, base_score))
+
+                scores.append(base_score)
+                dates.append(row['timestamp'])
+
+            # Créer la figure
+            fig = go.Figure()
+
+            # Ajouter la ligne de score
+            fig.add_trace(go.Scatter(
+                x=dates,
+                y=scores,
+                mode='lines+markers',
+                name='Score de Risque',
+                line=dict(color='#3498db', width=3),
+                marker=dict(size=8, color='#3498db'),
+                fill='tozeroy',
+                fillcolor='rgba(52, 152, 219, 0.2)',
+                hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Score: %{y:.0f}<extra></extra>'
+            ))
+
+            # Ajouter des zones de risque
+            fig.add_hrect(y0=0, y1=25, fillcolor="green", opacity=0.1, line_width=0, annotation_text="Faible", annotation_position="right")
+            fig.add_hrect(y0=25, y1=50, fillcolor="yellow", opacity=0.1, line_width=0, annotation_text="Moyen", annotation_position="right")
+            fig.add_hrect(y0=50, y1=75, fillcolor="orange", opacity=0.1, line_width=0, annotation_text="Élevé", annotation_position="right")
+            fig.add_hrect(y0=75, y1=100, fillcolor="red", opacity=0.1, line_width=0, annotation_text="Critique", annotation_position="right")
+
+            # Mise en page
+            fig.update_layout(
+                title=dict(
+                    text=f"📈 Évolution du Score de Risque - {cas_name}",
+                    x=0.5,
+                    xanchor='center',
+                    font=dict(size=16, weight='bold')
+                ),
+                xaxis=dict(
+                    title="Date",
+                    showgrid=True,
+                    gridcolor='lightgray',
+                    tickformat='%Y-%m-%d'
+                ),
+                yaxis=dict(
+                    title="Score de Risque",
+                    showgrid=True,
+                    gridcolor='lightgray',
+                    range=[0, 100]
+                ),
+                height=350,
+                plot_bgcolor='white',
+                hovermode='x unified'
+            )
+
+            logger.info(f"Graphique d'évolution du score généré pour {cas_id}")
+            return fig
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération du graphique d'évolution pour {cas_id}: {e}", exc_info=True)
+            fig = go.Figure()
+            fig.add_annotation(
+                text=f"Erreur: {str(e)}",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, showarrow=False,
+                font=dict(size=16, color='red')
+            )
+            return fig
+
+    def generate_network_graph(self,
+                                aggregated_df: pd.DataFrame,
+                                history_df: pd.DataFrame = None,
+                                min_risk_score: float = 0,
+                                selected_lists: List[str] = None,
+                                graph_mode: str = "bipartite") -> go.Figure:
+        """
+        Génère un graphe de réseau interactif montrant les relations entre substances et listes
+
+        Args:
+            aggregated_df: DataFrame des données agrégées
+            history_df: DataFrame de l'historique (optionnel, pour scores de risque)
+            min_risk_score: Score de risque minimum pour filtrer (0-100)
+            selected_lists: Listes sources à inclure (None = toutes)
+            graph_mode: Mode de visualisation ("bipartite" ou "substances_only")
+
+        Returns:
+            Figure plotly avec le graphe de réseau
+        """
+        try:
+            if aggregated_df.empty:
+                logger.warning("DataFrame agrégé vide pour le graphe de réseau")
+                fig = go.Figure()
+                fig.add_annotation(
+                    text="Aucune donnée disponible",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=16)
+                )
+                return fig
+
+            # Copier le DataFrame pour éviter les modifications
+            df = aggregated_df.copy()
+
+            # Filtrer par listes sélectionnées
+            if selected_lists:
+                df = df[df['source_list'].isin(selected_lists)]
+
+            if df.empty:
+                fig = go.Figure()
+                fig.add_annotation(
+                    text="Aucune donnée après filtrage",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=14)
+                )
+                return fig
+
+            # Calculer les scores de risque pour chaque substance
+            substance_scores = {}
+            if history_df is not None and not history_df.empty:
+                unique_cas_ids = df['cas_id'].unique()
+                for cas_id in unique_cas_ids:
+                    score_data = self.calculate_risk_score(cas_id, df, history_df)
+                    substance_scores[cas_id] = score_data['total_score']
+            else:
+                # Scores par défaut si pas d'historique
+                for cas_id in df['cas_id'].unique():
+                    substance_scores[cas_id] = 50
+
+            # Filtrer par score de risque
+            filtered_cas_ids = [cas_id for cas_id, score in substance_scores.items() if score >= min_risk_score]
+            df = df[df['cas_id'].isin(filtered_cas_ids)]
+
+            if df.empty:
+                fig = go.Figure()
+                fig.add_annotation(
+                    text=f"Aucune substance avec un score ≥ {min_risk_score}",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=14)
+                )
+                return fig
+
+            # Créer le graphe selon le mode
+            if graph_mode == "bipartite":
+                fig = self._create_bipartite_graph(df, substance_scores)
+            else:  # substances_only
+                fig = self._create_substances_only_graph(df, substance_scores)
+
+            logger.info(f"Graphe de réseau généré en mode {graph_mode} avec {len(filtered_cas_ids)} substances")
+            return fig
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération du graphe de réseau: {e}", exc_info=True)
+            fig = go.Figure()
+            fig.add_annotation(
+                text=f"Erreur: {str(e)}",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, showarrow=False,
+                font=dict(size=16, color='red')
+            )
+            return fig
+
+    def _create_bipartite_graph(self, df: pd.DataFrame, substance_scores: Dict) -> go.Figure:
+        """Crée un graphe bipartite substances-listes"""
+        import math
+
+        # Obtenir les substances et listes uniques
+        substances = df[['cas_id', 'cas_name']].drop_duplicates()
+        lists = df['source_list'].unique()
+
+        # Positions des nœuds (layout circulaire)
+        # Substances à gauche, listes à droite
+        substance_positions = {}
+        list_positions = {}
+
+        num_substances = len(substances)
+        num_lists = len(lists)
+
+        # Substances sur un demi-cercle à gauche
+        for i, (_, row) in enumerate(substances.iterrows()):
+            angle = math.pi * (i / max(num_substances - 1, 1)) + math.pi/2
+            x = -1 + 0.3 * math.cos(angle)
+            y = 0.5 * math.sin(angle)
+            substance_positions[row['cas_id']] = (x, y)
+
+        # Listes sur un demi-cercle à droite
+        for i, list_name in enumerate(lists):
+            angle = math.pi * (i / max(num_lists - 1, 1)) + math.pi/2
+            x = 1 - 0.3 * math.cos(angle)
+            y = 0.5 * math.sin(angle)
+            list_positions[list_name] = (x, y)
+
+        # Créer les liens (edges)
+        edge_x = []
+        edge_y = []
+
+        for _, row in df.iterrows():
+            cas_id = row['cas_id']
+            list_name = row['source_list']
+
+            x0, y0 = substance_positions[cas_id]
+            x1, y1 = list_positions[list_name]
+
+            edge_x.extend([x0, x1, None])
+            edge_y.extend([y0, y1, None])
+
+        # Créer la figure
+        fig = go.Figure()
+
+        # Ajouter les liens
+        fig.add_trace(go.Scatter(
+            x=edge_x, y=edge_y,
+            mode='lines',
+            line=dict(width=0.5, color='lightgray'),
+            hoverinfo='none',
+            showlegend=False
+        ))
+
+        # Ajouter les nœuds substances
+        substance_x = []
+        substance_y = []
+        substance_text = []
+        substance_colors = []
+        substance_sizes = []
+
+        for _, row in substances.iterrows():
+            cas_id = row['cas_id']
+            x, y = substance_positions[cas_id]
+            substance_x.append(x)
+            substance_y.append(y)
+
+            score = substance_scores.get(cas_id, 50)
+            level, badge = self._get_risk_level(score)
+
+            substance_text.append(
+                f"<b>{row['cas_name']}</b><br>"
+                f"CAS: {cas_id}<br>"
+                f"Score: {score:.1f}<br>"
+                f"Niveau: {badge} {level}"
+            )
+
+            # Couleur selon le niveau de risque
+            color_map = {
+                'Faible': '#2ecc71',
+                'Moyen': '#f39c12',
+                'Élevé': '#e67e22',
+                'Critique': '#e74c3c'
+            }
+            substance_colors.append(color_map.get(level, '#95a5a6'))
+
+            # Taille proportionnelle au score (10-40)
+            substance_sizes.append(10 + (score / 100) * 30)
+
+        fig.add_trace(go.Scatter(
+            x=substance_x, y=substance_y,
+            mode='markers',
+            marker=dict(
+                size=substance_sizes,
+                color=substance_colors,
+                line=dict(width=2, color='white'),
+                symbol='circle'
+            ),
+            text=substance_text,
+            hovertemplate='%{text}<extra></extra>',
+            name='Substances'
+        ))
+
+        # Ajouter les nœuds listes
+        list_x = []
+        list_y = []
+        list_text = []
+        list_sizes = []
+
+        list_colors = {
+            'testa': '#3498db',
+            'testb': '#9b59b6',
+            'testc': '#e67e22',
+            'testd': '#1abc9c'
+        }
+
+        for list_name in lists:
+            x, y = list_positions[list_name]
+            list_x.append(x)
+            list_y.append(y)
+
+            # Compter le nombre de substances dans cette liste
+            count = len(df[df['source_list'] == list_name]['cas_id'].unique())
+
+            list_text.append(
+                f"<b>Liste: {list_name}</b><br>"
+                f"Substances: {count}"
+            )
+
+            # Taille proportionnelle au nombre de substances (15-50)
+            list_sizes.append(15 + min(count * 3, 35))
+
+        fig.add_trace(go.Scatter(
+            x=list_x, y=list_y,
+            mode='markers',
+            marker=dict(
+                size=list_sizes,
+                color=[list_colors.get(l, '#95a5a6') for l in lists],
+                line=dict(width=2, color='white'),
+                symbol='square'
+            ),
+            text=list_text,
+            hovertemplate='%{text}<extra></extra>',
+            name='Listes ECHA'
+        ))
+
+        # Mise en page
+        fig.update_layout(
+            title=dict(
+                text="🕸️ Graphe de Réseau Substances-Listes",
+                x=0.5,
+                xanchor='center',
+                font=dict(size=18, weight='bold')
+            ),
+            showlegend=True,
+            hovermode='closest',
+            height=700,
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            plot_bgcolor='white',
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="center",
+                x=0.5
+            )
+        )
+
+        return fig
+
+    def _create_substances_only_graph(self, df: pd.DataFrame, substance_scores: Dict) -> go.Figure:
+        """Crée un graphe montrant uniquement les substances (co-occurrence dans listes)"""
+        import math
+
+        # Obtenir les substances uniques
+        substances = df[['cas_id', 'cas_name']].drop_duplicates()
+
+        # Calculer la matrice de co-occurrence (substances partageant des listes)
+        substance_lists = {}
+        for _, row in df.iterrows():
+            cas_id = row['cas_id']
+            list_name = row['source_list']
+            if cas_id not in substance_lists:
+                substance_lists[cas_id] = set()
+            substance_lists[cas_id].add(list_name)
+
+        # Positions des nœuds (layout circulaire)
+        positions = {}
+        num_substances = len(substances)
+
+        for i, (_, row) in enumerate(substances.iterrows()):
+            angle = 2 * math.pi * i / num_substances
+            x = math.cos(angle)
+            y = math.sin(angle)
+            positions[row['cas_id']] = (x, y)
+
+        # Créer les liens (substances partageant au moins une liste)
+        edge_x = []
+        edge_y = []
+        edge_weights = []
+
+        cas_ids = list(substance_lists.keys())
+        for i, cas_id1 in enumerate(cas_ids):
+            for cas_id2 in cas_ids[i+1:]:
+                # Nombre de listes partagées
+                shared = len(substance_lists[cas_id1] & substance_lists[cas_id2])
+                if shared > 0:
+                    x0, y0 = positions[cas_id1]
+                    x1, y1 = positions[cas_id2]
+
+                    edge_x.extend([x0, x1, None])
+                    edge_y.extend([y0, y1, None])
+                    edge_weights.append(shared)
+
+        # Créer la figure
+        fig = go.Figure()
+
+        # Ajouter les liens
+        if edge_x:
+            fig.add_trace(go.Scatter(
+                x=edge_x, y=edge_y,
+                mode='lines',
+                line=dict(width=1, color='lightgray'),
+                hoverinfo='none',
+                showlegend=False
+            ))
+
+        # Ajouter les nœuds substances
+        substance_x = []
+        substance_y = []
+        substance_text = []
+        substance_colors = []
+        substance_sizes = []
+
+        for _, row in substances.iterrows():
+            cas_id = row['cas_id']
+            x, y = positions[cas_id]
+            substance_x.append(x)
+            substance_y.append(y)
+
+            score = substance_scores.get(cas_id, 50)
+            level, badge = self._get_risk_level(score)
+
+            lists_str = ", ".join(sorted(substance_lists.get(cas_id, [])))
+
+            substance_text.append(
+                f"<b>{row['cas_name']}</b><br>"
+                f"CAS: {cas_id}<br>"
+                f"Score: {score:.1f}<br>"
+                f"Niveau: {badge} {level}<br>"
+                f"Listes: {lists_str}"
+            )
+
+            # Couleur selon le niveau de risque
+            color_map = {
+                'Faible': '#2ecc71',
+                'Moyen': '#f39c12',
+                'Élevé': '#e67e22',
+                'Critique': '#e74c3c'
+            }
+            substance_colors.append(color_map.get(level, '#95a5a6'))
+
+            # Taille proportionnelle au nombre de listes
+            num_lists = len(substance_lists.get(cas_id, []))
+            substance_sizes.append(10 + num_lists * 8)
+
+        fig.add_trace(go.Scatter(
+            x=substance_x, y=substance_y,
+            mode='markers+text',
+            marker=dict(
+                size=substance_sizes,
+                color=substance_colors,
+                line=dict(width=2, color='white'),
+                symbol='circle'
+            ),
+            text=substance_text,
+            hovertemplate='%{text}<extra></extra>',
+            name='Substances',
+            showlegend=False
+        ))
+
+        # Mise en page
+        fig.update_layout(
+            title=dict(
+                text="🕸️ Graphe de Réseau des Substances (Co-occurrence)",
+                x=0.5,
+                xanchor='center',
+                font=dict(size=18, weight='bold')
+            ),
+            showlegend=False,
+            hovermode='closest',
+            height=700,
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            plot_bgcolor='white'
+        )
+
+        return fig
+
+    def calculate_dashboard_metrics(self,
+                                      aggregated_df: pd.DataFrame,
+                                      history_df: pd.DataFrame) -> Dict:
+        """
+        Calcule toutes les métriques nécessaires pour le dashboard analytique
+
+        Args:
+            aggregated_df: DataFrame des données agrégées
+            history_df: DataFrame de l'historique des changements
+
+        Returns:
+            Dictionnaire avec toutes les métriques du dashboard
+        """
+        try:
+            metrics = {}
+
+            # Métriques de base
+            metrics['total_substances'] = aggregated_df['cas_id'].nunique() if not aggregated_df.empty else 0
+            metrics['total_lists'] = aggregated_df['source_list'].nunique() if not aggregated_df.empty else 0
+            metrics['total_connections'] = len(aggregated_df) if not aggregated_df.empty else 0
+
+            # Métriques de changements
+            if not history_df.empty:
+                metrics['total_changes'] = len(history_df)
+
+                # Changements par type
+                metrics['insertions'] = len(history_df[history_df['change_type'] == 'insertion'])
+                metrics['deletions'] = len(history_df[history_df['change_type'] == 'suppression'])
+                metrics['modifications'] = len(history_df[history_df['change_type'] == 'modification'])
+
+                # Changements récents (7 derniers jours)
+                history_df['timestamp'] = pd.to_datetime(history_df['timestamp'])
+                now = datetime.now()
+                seven_days_ago = now - timedelta(days=7)
+                recent_changes = history_df[history_df['timestamp'] >= seven_days_ago]
+                metrics['changes_7d'] = len(recent_changes)
+
+                # Changements 30 jours
+                thirty_days_ago = now - timedelta(days=30)
+                changes_30d = history_df[history_df['timestamp'] >= thirty_days_ago]
+                metrics['changes_30d'] = len(changes_30d)
+
+                # Période précédente pour comparaison (7j précédents)
+                fourteen_days_ago = now - timedelta(days=14)
+                prev_period = history_df[(history_df['timestamp'] >= fourteen_days_ago) &
+                                        (history_df['timestamp'] < seven_days_ago)]
+                metrics['changes_prev_7d'] = len(prev_period)
+
+                # Tendance
+                if metrics['changes_prev_7d'] > 0:
+                    metrics['trend_7d'] = ((metrics['changes_7d'] - metrics['changes_prev_7d']) /
+                                          metrics['changes_prev_7d']) * 100
+                else:
+                    metrics['trend_7d'] = 100 if metrics['changes_7d'] > 0 else 0
+
+            else:
+                metrics['total_changes'] = 0
+                metrics['insertions'] = 0
+                metrics['deletions'] = 0
+                metrics['modifications'] = 0
+                metrics['changes_7d'] = 0
+                metrics['changes_30d'] = 0
+                metrics['changes_prev_7d'] = 0
+                metrics['trend_7d'] = 0
+
+            # Scores de risque
+            if not aggregated_df.empty and not history_df.empty:
+                scores = []
+                risk_distribution = {'Faible': 0, 'Moyen': 0, 'Élevé': 0, 'Critique': 0}
+
+                for cas_id in aggregated_df['cas_id'].unique():
+                    score_data = self.calculate_risk_score(cas_id, aggregated_df, history_df)
+                    scores.append(score_data['total_score'])
+                    risk_distribution[score_data['level']] += 1
+
+                metrics['avg_risk_score'] = sum(scores) / len(scores) if scores else 0
+                metrics['max_risk_score'] = max(scores) if scores else 0
+                metrics['risk_distribution'] = risk_distribution
+
+                # Top 5 substances critiques
+                top_substances = []
+                for cas_id in aggregated_df['cas_id'].unique():
+                    score_data = self.calculate_risk_score(cas_id, aggregated_df, history_df)
+                    substance_data = aggregated_df[aggregated_df['cas_id'] == cas_id].iloc[0]
+                    top_substances.append({
+                        'cas_id': cas_id,
+                        'cas_name': substance_data['cas_name'],
+                        'score': score_data['total_score'],
+                        'level': score_data['level'],
+                        'badge': score_data['badge']
+                    })
+
+                top_substances = sorted(top_substances, key=lambda x: x['score'], reverse=True)[:5]
+                metrics['top_critical'] = top_substances
+
+            else:
+                metrics['avg_risk_score'] = 0
+                metrics['max_risk_score'] = 0
+                metrics['risk_distribution'] = {'Faible': 0, 'Moyen': 0, 'Élevé': 0, 'Critique': 0}
+                metrics['top_critical'] = []
+
+            # Health Score global (0-100)
+            # Formule: pondération de plusieurs facteurs
+            health_components = []
+
+            # 1. Moins de changements récents = mieux (inverse)
+            if metrics['total_substances'] > 0:
+                change_ratio = min(metrics['changes_7d'] / metrics['total_substances'], 1.0)
+                health_components.append((1 - change_ratio) * 100)
+            else:
+                health_components.append(100)
+
+            # 2. Score de risque moyen faible = mieux (inverse)
+            health_components.append((100 - metrics['avg_risk_score']))
+
+            # 3. Peu de suppressions = mieux
+            if metrics['total_changes'] > 0:
+                deletion_ratio = metrics['deletions'] / metrics['total_changes']
+                health_components.append((1 - deletion_ratio) * 100)
+            else:
+                health_components.append(100)
+
+            metrics['health_score'] = sum(health_components) / len(health_components) if health_components else 50
+
+            # Répartition par liste
+            if not aggregated_df.empty:
+                list_distribution = aggregated_df.groupby('source_list')['cas_id'].nunique().to_dict()
+                metrics['list_distribution'] = list_distribution
+            else:
+                metrics['list_distribution'] = {}
+
+            logger.info("Métriques du dashboard calculées avec succès")
+            return metrics
+
+        except Exception as e:
+            logger.error(f"Erreur lors du calcul des métriques dashboard: {e}", exc_info=True)
+            # Retourner des métriques par défaut en cas d'erreur
+            return {
+                'total_substances': 0,
+                'total_lists': 0,
+                'total_connections': 0,
+                'total_changes': 0,
+                'insertions': 0,
+                'deletions': 0,
+                'modifications': 0,
+                'changes_7d': 0,
+                'changes_30d': 0,
+                'changes_prev_7d': 0,
+                'trend_7d': 0,
+                'avg_risk_score': 0,
+                'max_risk_score': 0,
+                'risk_distribution': {'Faible': 0, 'Moyen': 0, 'Élevé': 0, 'Critique': 0},
+                'top_critical': [],
+                'health_score': 0,
+                'list_distribution': {}
+            }
+
+    def generate_gauge_chart(self, value: float, title: str, max_value: float = 100) -> go.Figure:
+        """
+        Génère un graphique de type gauge (jauge) pour le dashboard
+
+        Args:
+            value: Valeur actuelle
+            title: Titre de la jauge
+            max_value: Valeur maximale de l'échelle
+
+        Returns:
+            Figure plotly avec la jauge
+        """
+        try:
+            # Déterminer la couleur selon la valeur
+            if value >= 75:
+                color = "#2ecc71"  # Vert
+            elif value >= 50:
+                color = "#f39c12"  # Orange
+            elif value >= 25:
+                color = "#e67e22"  # Orange foncé
+            else:
+                color = "#e74c3c"  # Rouge
+
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=value,
+                title={'text': title, 'font': {'size': 16}},
+                number={'suffix': "", 'font': {'size': 24}},
+                gauge={
+                    'axis': {'range': [None, max_value], 'tickwidth': 1},
+                    'bar': {'color': color},
+                    'bgcolor': "white",
+                    'borderwidth': 2,
+                    'bordercolor': "gray",
+                    'steps': [
+                        {'range': [0, 25], 'color': '#ffebee'},
+                        {'range': [25, 50], 'color': '#fff3e0'},
+                        {'range': [50, 75], 'color': '#fff9c4'},
+                        {'range': [75, max_value], 'color': '#e8f5e9'}
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': max_value * 0.9
+                    }
+                }
+            ))
+
+            fig.update_layout(
+                height=250,
+                margin=dict(l=20, r=20, t=40, b=20),
+                paper_bgcolor="white",
+                font={'color': "darkblue", 'family': "Arial"}
+            )
+
+            return fig
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération de la jauge: {e}", exc_info=True)
+            return go.Figure()
