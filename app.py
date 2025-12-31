@@ -63,17 +63,51 @@ def display_aggregated_data(data_manager):
             return
 
         st.subheader("Filtres")
+
+        # Bouton Reset Filtres
+        col_reset1, col_reset2 = st.columns([6, 1])
+        with col_reset2:
+            if st.button("🔄 Reset Filtres"):
+                st.session_state.cas_name_filter_agg = ""
+                st.session_state.cas_id_filter_agg = ""
+                st.session_state.source_list_filter_agg = "Toutes"
+                st.rerun()
+
+        # Initialiser session_state si nécessaire
+        if 'cas_name_filter_agg' not in st.session_state:
+            st.session_state.cas_name_filter_agg = ""
+        if 'cas_id_filter_agg' not in st.session_state:
+            st.session_state.cas_id_filter_agg = ""
+        if 'source_list_filter_agg' not in st.session_state:
+            st.session_state.source_list_filter_agg = "Toutes"
+
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            cas_name_filter = st.text_input("Filtrer par nom de substance (cas_name)")
+            cas_name_filter = st.text_input(
+                "Filtrer par nom de substance (cas_name)",
+                value=st.session_state.cas_name_filter_agg,
+                key="cas_name_input_agg"
+            )
+            st.session_state.cas_name_filter_agg = cas_name_filter
 
         with col2:
-            cas_id_filter = st.text_input("Filtrer par identifiant CAS (cas_id)")
+            cas_id_filter = st.text_input(
+                "Filtrer par identifiant CAS (cas_id)",
+                value=st.session_state.cas_id_filter_agg,
+                key="cas_id_input_agg"
+            )
+            st.session_state.cas_id_filter_agg = cas_id_filter
 
         with col3:
             source_lists = ['Toutes'] + sorted(list(aggregated_df['source_list'].unique()))
-            selected_source_list = st.selectbox("Filtrer par liste source", source_lists)
+            selected_source_list = st.selectbox(
+                "Filtrer par liste source",
+                source_lists,
+                index=source_lists.index(st.session_state.source_list_filter_agg) if st.session_state.source_list_filter_agg in source_lists else 0,
+                key="source_list_select_agg"
+            )
+            st.session_state.source_list_filter_agg = selected_source_list
 
         filtered_df = aggregated_df.copy()
 
@@ -345,8 +379,12 @@ def display_trends(data_manager, history_manager):
             daily_counts['cumulative'] = daily_counts['count'].cumsum()
             daily_counts.columns = ['date', 'nouvelles_substances', 'total_substances']
 
+            # Convertir les dates en string pour l'affichage
+            daily_counts['date_str'] = daily_counts['date'].astype(str)
+
             # Afficher le graphique
-            st.line_chart(daily_counts.set_index('date')[['total_substances']], use_container_width=True)
+            chart_data = daily_counts.set_index('date_str')[['total_substances']]
+            st.line_chart(chart_data, use_container_width=True)
 
             # Afficher les statistiques
             col1, col2, col3 = st.columns(3)
