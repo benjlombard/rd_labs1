@@ -3,14 +3,18 @@ from pathlib import Path
 import yaml
 from datetime import datetime
 import shutil
+from backend.logger import get_logger
 
 
 class HistoryManager:
     def __init__(self, config_path: str = "config.yaml"):
+        self.logger = get_logger()
+        self.logger.info("Initialisation du HistoryManager")
         self.config = self._load_config(config_path)
         self.history_file = Path(self.config['output_files']['change_history'])
         self.archive_folder = Path(self.config['general']['archive_folder'])
         self.archive_old_files = self.config['general']['archive_old_files']
+        self.logger.debug(f"Fichier historique: {self.history_file}")
 
     def _load_config(self, config_path: str) -> dict:
         with open(config_path, 'r', encoding='utf-8') as f:
