@@ -190,6 +190,7 @@ rd_labs1/
 - Sauvegarder le fichier agrégé (avec optimisation)
 - Comparer les DataFrames pour éviter les réécritures inutiles
 - Gérer les timestamps de création et modification
+- **Archiver automatiquement les fichiers sources**
 
 **Méthodes principales** :
 - `load_cas_source()` : Charge la base principale
@@ -200,6 +201,7 @@ rd_labs1/
 - `_dataframes_are_equal(df1, df2)` : Compare deux DataFrames
 - `_update_timestamps(new_df)` : Ajoute ou met à jour created_at et updated_at
 - `get_file_modification_date(list_name)` : Retourne la date de modification du fichier source
+- `archive_source_files()` : Archive tous les fichiers Excel sources avec timestamp
 
 **Optimisation implémentée** :
 - Ne réécrit le fichier agrégé QUE si les données ont changé
@@ -212,6 +214,17 @@ rd_labs1/
 - **updated_at** : Date de dernière modification des données (mise à jour si changement détecté)
 - Clé unique : `cas_id + source_list` pour identifier les substances
 - Comparaison intelligente : exclut les colonnes de métadonnées lors de la comparaison
+
+**Archivage Automatique des Fichiers Sources** :
+- Copie automatique des fichiers Excel de `data/input/` vers `data/archives/`
+- Ajout d'un timestamp au nom du fichier : `nom_fichier_YYYYMMDD_HHMMSS.xlsx`
+- Exemple : `testa.xlsx` → `testa_20251231_153045.xlsx`
+- Utilisation de `shutil.copy2()` pour préserver les métadonnées
+- Les fichiers originaux restent dans `input/` (copie, pas déplacement)
+- Création automatique du dossier `data/archives/` si inexistant
+- Retourne le nombre de fichiers archivés
+- Logging de toutes les opérations d'archivage
+- Gestion des erreurs sans interruption du processus principal
 
 ### 2. change_detector.py
 **Responsabilités** :
@@ -409,6 +422,11 @@ success = pdf_exporter.generate_report(aggregated_df, history_df, "rapport.pdf")
 
 #### Onglet 4 : Mise à Jour
 - Bouton "Charger et Agréger les Données"
+- **Archivage automatique avant chargement** :
+  - Copie tous les fichiers Excel sources vers `data/archives/`
+  - Ajout timestamp au nom : `fichier_YYYYMMDD_HHMMSS.xlsx`
+  - Message info : "📦 X fichiers archivés dans data/archives/"
+  - Spinner "Archivage des fichiers sources..." pendant l'opération
 - Messages adaptatifs :
   - **Vert** : "Données sauvegardées avec succès" (fichier modifié)
   - **Bleu** : "Aucun changement détecté, fichier non modifié" (optimisé)
@@ -636,6 +654,16 @@ git push origin feature/optimize-aggregation-save
 - Affichage dans l'interface Streamlit
 - Persistance entre les mises à jour
 
+### ✅ Archivage Automatique des Fichiers Sources
+- **Archivage automatique lors du chargement** des données
+- Copie de tous les fichiers Excel de `data/input/` vers `data/archives/`
+- **Ajout de timestamp** au nom du fichier : `nom_YYYYMMDD_HHMMSS.xlsx`
+- Les fichiers originaux restent dans `input/` (copie, pas déplacement)
+- Message d'information avec le nombre de fichiers archivés
+- Création automatique du dossier `archives/` si inexistant
+- Logging complet de toutes les opérations
+- Gestion des erreurs sans interruption du processus principal
+
 ### ✅ Améliorations UX
 - **Bouton "Reset Filtres"** dans l'onglet Données Agrégées (🔄)
 - **Persistance des filtres** avec `st.session_state`
@@ -755,6 +783,18 @@ sharepoint:
 3. Observer les messages de succès/info
 4. Vérifier : Messages disparaissent automatiquement après 5 secondes
 5. Vérifier : Aperçu des changements reste affiché
+
+### Test 11 : Archivage Automatique des Fichiers
+1. Onglet "Mise à Jour"
+2. Vérifier la présence de fichiers Excel dans `data/input/`
+3. Cliquer "Charger et Agréger les Données"
+4. Observer le spinner "Archivage des fichiers sources..."
+5. Vérifier : Message "📦 X fichiers archivés dans data/archives/"
+6. Vérifier le dossier `data/archives/`
+7. Vérifier : Fichiers archivés avec timestamp (ex: `testa_20251231_153045.xlsx`)
+8. Vérifier : Fichiers originaux toujours présents dans `data/input/`
+9. Vérifier : Format du timestamp : YYYYMMDD_HHMMSS
+10. Relancer "Charger et Agréger" : nouveau timestamp, pas d'écrasement
 
 ## Commandes Utiles
 
@@ -887,6 +927,8 @@ Si tu dois recréer ce projet, voici les étapes EXACTES :
 - S'assurer que le module logger est créé EN PREMIER (les autres modules en dépendent)
 - Intégrer `get_logger()` dans tous les modules backend pour le logging centralisé
 - Implémenter la gestion des timestamps (created_at, updated_at) dans data_manager.py
-- Créer l'onglet "Tendances" avec les graphiques d'évolution temporelle
-- Ajouter le filtre source_list et l'affichage des dates de modification
+- **Implémenter l'archivage automatique** des fichiers sources avec timestamp
+- Créer l'onglet "Tendances" avec les graphiques d'évolution temporelle (multi-courbes)
+- Ajouter le filtre multiselect pour sélectionner les listes sources à afficher
+- Ajouter le bouton "Reset Filtres" avec persistance via st.session_state
 - Implémenter la disparition automatique des messages après 5 secondes
