@@ -38,6 +38,7 @@ env/
 data/aggregated_data.xlsx
 data/change_history.xlsx
 data/archives/
+data/reports/
 
 # IDE
 .vscode/

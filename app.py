@@ -2,12 +2,14 @@ import streamlit as st
 import pandas as pd
 import sys
 from pathlib import Path
+from datetime import datetime
 
 sys.path.append(str(Path(__file__).parent / "backend"))
 
 from backend.data_manager import DataManager
 from backend.change_detector import ChangeDetector
 from backend.history_manager import HistoryManager
+from backend.pdf_exporter import PDFExporter
 
 
 st.set_page_config(
@@ -29,6 +31,10 @@ def main():
     st.title("Tableau de Bord - Substances Chimiques ECHA")
 
     data_manager, change_detector, history_manager = initialize_managers()
+
+    st.divider()
+    display_pdf_export_section(data_manager, history_manager)
+    st.divider()
 
     tabs = st.tabs(["Données Agrégées", "Historique des Changements", "Mise à Jour"])
 
@@ -267,6 +273,49 @@ def display_update_section(data_manager, change_detector, history_manager):
 
     except Exception as e:
         st.error(f"Erreur lors de la lecture des informations: {str(e)}")
+
+
+def display_pdf_export_section(data_manager, history_manager):
+    col1, col2, col3 = st.columns([2, 1, 1])
+
+    with col1:
+        st.markdown("### 📄 Export Rapport PDF")
+
+    with col3:
+        if st.button("Générer Rapport PDF", type="primary"):
+            with st.spinner("Génération du rapport PDF en cours..."):
+                try:
+                    aggregated_df = data_manager.load_aggregated_data()
+                    history_df = history_manager.load_history()
+
+                    pdf_exporter = PDFExporter()
+
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    output_dir = Path("data/reports")
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    output_path = output_dir / f"rapport_echa_{timestamp}.pdf"
+
+                    success = pdf_exporter.generate_report(aggregated_df, history_df, str(output_path))
+
+                    if success:
+                        st.success(f"✅ Rapport PDF généré avec succès!")
+
+                        with open(output_path, "rb") as pdf_file:
+                            pdf_bytes = pdf_file.read()
+                            st.download_button(
+                                label="📥 Télécharger le Rapport",
+                                data=pdf_bytes,
+                                file_name=f"rapport_echa_{timestamp}.pdf",
+                                mime="application/pdf"
+                            )
+
+                        st.info(f"📁 Fichier sauvegardé: {output_path}")
+                    else:
+                        st.error("❌ Erreur lors de la génération du rapport PDF")
+
+                except Exception as e:
+                    st.error(f"Erreur: {str(e)}")
+                    st.exception(e)
 
 
 if __name__ == "__main__":
