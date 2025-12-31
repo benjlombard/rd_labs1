@@ -369,10 +369,11 @@ success = pdf_exporter.generate_report(aggregated_df, history_df, "rapport.pdf")
 #### Onglet 1 : Données Agrégées
 - Tableau complet de toutes les substances
 - Colonnes `source_list`, `created_at`, `updated_at`
-- Filtres :
+- **Bouton "🔄 Reset Filtres"** : réinitialise tous les filtres en un clic
+- Filtres avec persistance via `st.session_state` :
   - Par nom de substance (cas_name)
   - Par identifiant CAS (cas_id)
-  - **Par liste source (source_list)**
+  - Par liste source (source_list)
 - Statistiques :
   - Total de substances
   - Substances uniques
@@ -389,16 +390,22 @@ success = pdf_exporter.generate_report(aggregated_df, history_df, "rapport.pdf")
 - Export CSV de l'historique
 
 #### Onglet 3 : Tendances
-- **Graphique d'évolution du nombre de substances** :
-  - Ligne temporelle montrant l'accumulation de substances
+- **Graphique d'évolution du nombre de substances (multi-courbes)** :
+  - **Filtre multiselect** avec cases à cocher pour sélectionner les listes à afficher
+  - Toutes les listes sélectionnées par défaut
+  - **Une ligne par liste source** (ex: testa, testb, testc, testd)
+  - **Une ligne "TOTAL"** qui cumule toutes les listes sélectionnées
+  - Évolution cumulée indépendante pour chaque liste source
   - Basé sur la colonne `created_at`
-  - Statistiques : total, première et dernière date
+  - Statistiques : total substances, première et dernière date
+  - Conversion des dates en string pour compatibilité avec st.line_chart()
 - **Graphique de tendances des changements** :
   - Bar chart des insertions/suppressions/modifications par date
   - Basé sur l'historique avec `timestamp`
-  - Statistiques par type de changement
+  - **Filtre selectbox séparé** pour filtrer par liste source
+  - Statistiques par type de changement (total, insertions, suppressions, modifications)
 - **Tableau des derniers changements** (10 plus récents)
-- **Filtre par liste source** pour analyser une liste spécifique
+- **Séparation des filtres** : multiselect pour évolution, selectbox pour changements
 
 #### Onglet 4 : Mise à Jour
 - Bouton "Charger et Agréger les Données"
@@ -610,12 +617,17 @@ git push origin feature/optimize-aggregation-save
 - Nom de fichier avec timestamp (rapport_echa_YYYYMMDD_HHMMSS.pdf)
 
 ### ✅ Tableau de Bord de Tendances (Nouvel Onglet)
-- Graphique d'évolution temporelle du nombre de substances
-- Graphique de tendances des changements (insertions/suppressions/modifications)
-- Analyse par liste source avec filtre dédié
+- **Graphique d'évolution multi-courbes** :
+  - Filtre multiselect pour sélectionner les listes à afficher
+  - Une ligne par liste source + ligne TOTAL
+  - Évolution cumulée indépendante par liste
+  - Toutes les listes sélectionnées par défaut
+- **Graphique de tendances des changements** (insertions/suppressions/modifications)
+- **Filtres séparés** : multiselect pour évolution, selectbox pour changements
 - Statistiques cumulatives et par période
 - Visualisation des 10 derniers changements
 - Graphiques interactifs avec Streamlit charts
+- Conversion automatique des dates en string pour compatibilité
 
 ### ✅ Gestion des Timestamps
 - Colonnes `created_at` et `updated_at` dans le tableau agrégé
@@ -625,10 +637,14 @@ git push origin feature/optimize-aggregation-save
 - Persistance entre les mises à jour
 
 ### ✅ Améliorations UX
+- **Bouton "Reset Filtres"** dans l'onglet Données Agrégées (🔄)
+- **Persistance des filtres** avec `st.session_state`
 - Filtre par liste source dans l'onglet Données Agrégées
+- **Filtre multiselect** avec cases à cocher dans l'onglet Tendances
 - Affichage des dates de modification des fichiers Excel sources
 - Disparition automatique des messages de succès (5 secondes)
 - Meilleure visibilité sur l'état des fichiers
+- Interface réactive avec rafraîchissement automatique (`st.rerun()`)
 
 ### ✅ Qualité du Code
 - Architecture modulaire (5 modules backend)
@@ -705,15 +721,27 @@ sharepoint:
 5. Modifier un fichier Excel et recharger
 6. Vérifier : `created_at` conservée, `updated_at` mise à jour
 
-### Test 7 : Onglet Tendances
-1. Onglet "Tendances"
-2. Vérifier : Graphique d'évolution du nombre de substances (ligne)
-3. Vérifier : Graphique de tendances des changements (bar chart)
-4. Tester le filtre par liste source
-5. Vérifier : Statistiques affichées (total, insertions, suppressions, modifications)
-6. Vérifier : Tableau des 10 derniers changements
+### Test 7 : Bouton Reset Filtres
+1. Onglet "Données Agrégées"
+2. Appliquer des filtres (cas_name, cas_id, source_list)
+3. Vérifier : Données filtrées affichées
+4. Cliquer sur le bouton "🔄 Reset Filtres"
+5. Vérifier : Tous les filtres réinitialisés
+6. Vérifier : Toutes les données affichées
 
-### Test 8 : Dates des Fichiers
+### Test 8 : Onglet Tendances - Graphique Multi-Courbes
+1. Onglet "Tendances"
+2. Vérifier : Filtre multiselect "Sélectionner les listes sources"
+3. Vérifier : Toutes les listes cochées par défaut
+4. Vérifier : Graphique affiche une ligne par liste + ligne TOTAL
+5. Décocher certaines listes
+6. Vérifier : Graphique mis à jour dynamiquement
+7. Vérifier : Ligne TOTAL recalculée avec seulement les listes sélectionnées
+8. Tester le filtre selectbox pour les tendances des changements
+9. Vérifier : Statistiques affichées (total, insertions, suppressions, modifications)
+10. Vérifier : Tableau des 10 derniers changements
+
+### Test 9 : Dates des Fichiers
 1. Onglet "Mise à Jour"
 2. Section "Informations sur les Fichiers"
 3. Vérifier : 4ème colonne affiche la date de modification (📅 YYYY-MM-DD HH:MM:SS)
@@ -721,7 +749,7 @@ sharepoint:
 5. Recharger la page
 6. Vérifier : Date mise à jour
 
-### Test 9 : Disparition des Messages
+### Test 10 : Disparition des Messages
 1. Onglet "Mise à Jour"
 2. Cliquer "Charger et Agréger les Données"
 3. Observer les messages de succès/info
