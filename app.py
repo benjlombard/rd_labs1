@@ -53,7 +53,7 @@ def main():
     if unread_count > 0:
         st.warning(f"🔔 {unread_count} alerte(s) non lue(s) - Consultez l'onglet 'Ma Surveillance'")
 
-    tabs = st.tabs(["📊 Dashboard", "Données Agrégées", "Historique des Changements", "Tendances", "Ma Surveillance", "Timeline", "Calendrier", "Réseau", "Mise à Jour"])
+    tabs = st.tabs(["📊 Dashboard", "Données Agrégées", "Historique des Changements", "Tendances", "Ma Surveillance", "Timeline", "Calendrier", "Réseau", "Matrice de Chaleur", "Mise à Jour"])
 
     with tabs[0]:
         display_dashboard(data_manager, history_manager, risk_analyzer, alert_system)
@@ -80,6 +80,9 @@ def main():
         display_network_graph(data_manager, history_manager, risk_analyzer)
 
     with tabs[8]:
+        display_risk_heatmap(data_manager, history_manager, risk_analyzer)
+
+    with tabs[9]:
         display_update_section(data_manager, change_detector, history_manager, watchlist_manager, risk_analyzer, alert_system)
 
 
@@ -1797,6 +1800,159 @@ def display_network_graph(data_manager, history_manager, risk_analyzer):
 
     else:
         st.info("Aucune donnée après application des filtres.")
+
+
+def display_risk_heatmap(data_manager, history_manager, risk_analyzer):
+    """
+    Affiche la matrice de chaleur 2D interactive (substances × listes)
+    """
+    st.header("🔥 Matrice de Chaleur Interactive")
+    st.markdown("""
+    Visualisez toutes les substances et leurs scores de risque dans une matrice interactive.
+    - **Lignes** : Substances (CAS ID + Nom)
+    - **Colonnes** : Listes sources
+    - **Couleur** : Score de risque (vert = faible, rouge = critique, gris = absent)
+    """)
+
+    # Charger les données
+    try:
+        aggregated_df = data_manager.load_aggregated_data()
+        history_df = history_manager.load_history()
+    except FileNotFoundError:
+        st.warning("⚠️ Aucune donnée agrégée trouvée. Veuillez charger les données depuis l'onglet 'Mise à Jour'.")
+        return
+
+    if aggregated_df.empty:
+        st.info("Aucune donnée disponible.")
+        return
+
+    # Contrôles et filtres
+    st.divider()
+    st.subheader("⚙️ Options d'Affichage")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        # Mode d'affichage
+        mode = st.selectbox(
+            "Mode de visualisation",
+            options=["all", "top50", "multi_lists"],
+            format_func=lambda x: {
+                "all": "📊 Toutes les substances",
+                "top50": "🔝 Top 50 critiques",
+                "multi_lists": "🔗 Substances multi-listes"
+            }[x],
+            help="Sélectionnez le mode d'affichage de la matrice"
+        )
+
+    with col2:
+        # Filtre par niveau de risque
+        risk_levels = ["Faible", "Moyen", "Élevé", "Critique"]
+        selected_risks = st.multiselect(
+            "Filtrer par niveau de risque",
+            options=risk_levels,
+            default=[],
+            help="Sélectionnez un ou plusieurs niveaux (vide = tous)"
+        )
+
+    with col3:
+        # Filtre par liste source
+        available_lists = aggregated_df['source_list'].unique().tolist()
+        selected_lists = st.multiselect(
+            "Filtrer par liste source",
+            options=available_lists,
+            default=[],
+            help="Sélectionnez une ou plusieurs listes (vide = toutes)"
+        )
+
+    # Bouton de réinitialisation des filtres
+    if st.button("🔄 Réinitialiser les filtres"):
+        st.rerun()
+
+    # Générer la heatmap
+    st.divider()
+
+    with st.spinner("Génération de la matrice de chaleur..."):
+        fig = risk_analyzer.generate_risk_heatmap(
+            aggregated_df=aggregated_df,
+            history_df=history_df,
+            mode=mode,
+            risk_filter=selected_risks if selected_risks else None,
+            list_filter=selected_lists if selected_lists else None
+        )
+
+    if fig.data:
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Informations supplémentaires
+        st.divider()
+        st.subheader("ℹ️ Informations")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("""
+            **Comment lire la matrice** :
+            - Passez la souris sur une cellule pour voir les détails
+            - Les cellules **grises** indiquent que la substance est absente de cette liste
+            - Les cellules **colorées** indiquent la présence avec le score de risque
+            - Les substances sont triées par score de risque décroissant (critiques en haut)
+            """)
+
+        with col2:
+            st.markdown("""
+            **Légende des couleurs** :
+            - 🟢 **Vert** : Risque faible (0-25)
+            - 🟡 **Jaune** : Risque moyen (25-50)
+            - 🟠 **Orange** : Risque élevé (50-75)
+            - 🔴 **Rouge** : Risque critique (75-100)
+            - ⬜ **Gris** : Absent de cette liste
+            """)
+
+        # Statistiques
+        st.divider()
+        st.subheader("📊 Statistiques de la Matrice")
+
+        # Calculer quelques statistiques
+        total_substances = len(aggregated_df['cas_id'].unique())
+        total_lists = len(aggregated_df['source_list'].unique())
+
+        # Calculer les scores
+        scores = []
+        for _, row in aggregated_df.iterrows():
+            result = risk_analyzer.calculate_risk_score(row['cas_id'], aggregated_df, history_df)
+            scores.append(result['total_score'])
+
+        import numpy as np
+        avg_score = np.mean(scores) if scores else 0
+        max_score = np.max(scores) if scores else 0
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("Total Substances", total_substances)
+
+        with col2:
+            st.metric("Total Listes", total_lists)
+
+        with col3:
+            st.metric("Score Moyen", f"{avg_score:.1f}")
+
+        with col4:
+            st.metric("Score Maximum", f"{max_score:.1f}")
+
+        # Conseils d'utilisation
+        st.divider()
+        st.info("""
+        💡 **Conseils d'utilisation** :
+        - Utilisez le mode **Top 50 critiques** pour une vue plus lisible des substances à risque
+        - Utilisez le mode **Substances multi-listes** pour identifier les substances présentes dans plusieurs réglementations
+        - Les filtres vous permettent de créer des vues personnalisées pour vos analyses
+        - La hauteur de la matrice s'adapte automatiquement au nombre de substances affichées
+        """)
+
+    else:
+        st.warning("Aucune donnée à afficher avec les filtres sélectionnés.")
 
 
 if __name__ == "__main__":

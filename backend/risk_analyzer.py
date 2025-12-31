@@ -1739,3 +1739,223 @@ class RiskAnalyzer:
         except Exception as e:
             logger.error(f"Erreur lors de la génération de la jauge: {e}", exc_info=True)
             return go.Figure()
+
+    def generate_risk_heatmap(self,
+                              aggregated_df: pd.DataFrame,
+                              history_df: pd.DataFrame,
+                              mode: str = "all",
+                              risk_filter: List[str] = None,
+                              list_filter: List[str] = None) -> go.Figure:
+        """
+        Génère une matrice de chaleur 2D interactive (substances × listes sources)
+
+        Args:
+            aggregated_df: DataFrame des données agrégées
+            history_df: DataFrame de l'historique des changements
+            mode: Mode d'affichage
+                - "all": Toutes les substances
+                - "top50": Top 50 substances critiques
+                - "multi_lists": Substances présentes dans >1 liste
+            risk_filter: Filtrer par niveaux de risque (ex: ["Élevé", "Critique"])
+            list_filter: Filtrer par listes sources (ex: ["testa", "testb"])
+
+        Returns:
+            Figure Plotly avec heatmap interactive
+        """
+        try:
+            logger.info(f"Génération heatmap 2D - mode: {mode}")
+
+            # Vérifications
+            if aggregated_df.empty:
+                logger.warning("DataFrame vide pour la heatmap")
+                return go.Figure()
+
+            # Calculer les scores de risque pour chaque substance
+            df = aggregated_df.copy()
+            df['risk_score'] = df.apply(
+                lambda row: self.calculate_risk_score(row['cas_id'], aggregated_df, history_df)['total_score'],
+                axis=1
+            )
+
+            # Déterminer le niveau de risque
+            def get_risk_level(score):
+                if score >= 75:
+                    return "Critique"
+                elif score >= 50:
+                    return "Élevé"
+                elif score >= 25:
+                    return "Moyen"
+                else:
+                    return "Faible"
+
+            df['risk_level'] = df['risk_score'].apply(get_risk_level)
+
+            # Appliquer les filtres
+            if risk_filter and len(risk_filter) > 0:
+                df = df[df['risk_level'].isin(risk_filter)]
+                logger.debug(f"Filtre risque appliqué: {len(df)} substances")
+
+            if list_filter and len(list_filter) > 0:
+                df = df[df['source_list'].isin(list_filter)]
+                logger.debug(f"Filtre liste appliqué: {len(df)} substances")
+
+            if df.empty:
+                logger.warning("Aucune donnée après filtrage")
+                fig = go.Figure()
+                fig.add_annotation(
+                    text="Aucune donnée à afficher avec les filtres sélectionnés",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=16, color="#666")
+                )
+                return fig
+
+            # Appliquer le mode
+            if mode == "top50":
+                # Top 50 substances par score de risque
+                df = df.nlargest(50, 'risk_score')
+                logger.info(f"Mode top50: {len(df)} substances")
+
+            elif mode == "multi_lists":
+                # Substances présentes dans plusieurs listes
+                cas_counts = df.groupby('cas_id').size()
+                multi_cas = cas_counts[cas_counts > 1].index
+                df = df[df['cas_id'].isin(multi_cas)]
+                logger.info(f"Mode multi_lists: {len(df)} substances")
+
+            # Créer la matrice substances × listes
+            # Pivot: cas_id en lignes, source_list en colonnes, risk_score en valeurs
+            pivot_data = df.pivot_table(
+                index='cas_id',
+                columns='source_list',
+                values='risk_score',
+                aggfunc='first'  # Une substance ne peut être qu'une fois par liste
+            )
+
+            # Créer les labels pour les lignes (cas_id + cas_name)
+            cas_names = df[['cas_id', 'cas_name']].drop_duplicates().set_index('cas_id')
+            row_labels = []
+            for cas_id in pivot_data.index:
+                cas_name = cas_names.loc[cas_id, 'cas_name'] if cas_id in cas_names.index else "Unknown"
+                # Limiter la longueur du nom
+                if len(cas_name) > 30:
+                    cas_name = cas_name[:27] + "..."
+                row_labels.append(f"{cas_id}<br>{cas_name}")
+
+            # Remplacer NaN par -1 pour les distinguer visuellement
+            heatmap_data = pivot_data.fillna(-1)
+
+            # Trier les substances par score moyen décroissant
+            row_means = pivot_data.mean(axis=1, skipna=True)
+            sorted_indices = row_means.sort_values(ascending=False).index
+            heatmap_data = heatmap_data.loc[sorted_indices]
+            row_labels_sorted = [row_labels[list(pivot_data.index).index(idx)] for idx in sorted_indices]
+
+            # Créer le texte de hover personnalisé
+            hover_text = []
+            for i, cas_id in enumerate(heatmap_data.index):
+                row_hover = []
+                for col in heatmap_data.columns:
+                    score = heatmap_data.loc[cas_id, col]
+                    if score == -1:
+                        # Substance absente de cette liste
+                        row_hover.append(f"CAS: {cas_id}<br>Liste: {col}<br>Absent")
+                    else:
+                        level = get_risk_level(score)
+                        cas_name_full = cas_names.loc[cas_id, 'cas_name'] if cas_id in cas_names.index else "Unknown"
+                        row_hover.append(
+                            f"CAS: {cas_id}<br>"
+                            f"Nom: {cas_name_full}<br>"
+                            f"Liste: {col}<br>"
+                            f"Score: {score:.1f}<br>"
+                            f"Niveau: {level}"
+                        )
+                hover_text.append(row_hover)
+
+            # Créer la colorscale personnalisée
+            # -1 (absent) = gris clair
+            # 0-25 (faible) = vert
+            # 25-50 (moyen) = jaune
+            # 50-75 (élevé) = orange
+            # 75-100 (critique) = rouge
+            colorscale = [
+                [0.0, "#f0f0f0"],    # Gris pour absent (-1 normalisé à 0)
+                [0.01, "#e8f5e9"],   # Début vert clair
+                [0.25, "#4caf50"],   # Vert
+                [0.50, "#ffc107"],   # Jaune/orange
+                [0.75, "#ff9800"],   # Orange
+                [1.0, "#f44336"]     # Rouge
+            ]
+
+            # Créer la heatmap
+            fig = go.Figure(data=go.Heatmap(
+                z=heatmap_data.values,
+                x=heatmap_data.columns,
+                y=row_labels_sorted,
+                text=hover_text,
+                hovertemplate='%{text}<extra></extra>',
+                colorscale=colorscale,
+                zmin=-1,
+                zmax=100,
+                colorbar=dict(
+                    title=dict(
+                        text="Score de Risque",
+                        side="right"
+                    ),
+                    tickmode="array",
+                    tickvals=[0, 25, 50, 75, 100],
+                    ticktext=["0 (Faible)", "25", "50 (Moyen)", "75 (Élevé)", "100 (Crit.)"],
+                    lenmode="fraction",
+                    len=0.7,
+                    thickness=15
+                ),
+                showscale=True
+            ))
+
+            # Statistiques pour le titre
+            total_substances = len(heatmap_data)
+            total_lists = len(heatmap_data.columns)
+            avg_score = heatmap_data[heatmap_data > 0].values.flatten()
+            avg_score = avg_score[avg_score > 0].mean() if len(avg_score[avg_score > 0]) > 0 else 0
+
+            # Titre selon le mode
+            mode_titles = {
+                "all": "Toutes les substances",
+                "top50": "Top 50 substances critiques",
+                "multi_lists": "Substances multi-listes"
+            }
+            title_text = f"Matrice de Chaleur: {mode_titles.get(mode, mode)}<br>"
+            title_text += f"<sub>{total_substances} substances × {total_lists} listes | Score moyen: {avg_score:.1f}</sub>"
+
+            # Mise en page
+            fig.update_layout(
+                title={
+                    'text': title_text,
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'font': {'size': 18, 'color': '#2c3e50'}
+                },
+                xaxis={
+                    'title': 'Listes Sources',
+                    'side': 'bottom',
+                    'tickangle': 0,
+                    'tickfont': {'size': 12}
+                },
+                yaxis={
+                    'title': 'Substances (CAS ID + Nom)',
+                    'tickfont': {'size': 9},
+                    'autorange': 'reversed'  # Pour avoir les plus critiques en haut
+                },
+                height=max(600, total_substances * 20),  # Hauteur dynamique
+                margin=dict(l=200, r=100, t=100, b=80),
+                paper_bgcolor='white',
+                plot_bgcolor='white',
+                hovermode='closest'
+            )
+
+            logger.info(f"Heatmap générée: {total_substances} substances × {total_lists} listes")
+            return fig
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération de la heatmap: {e}", exc_info=True)
+            return go.Figure()
