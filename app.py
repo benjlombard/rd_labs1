@@ -354,10 +354,10 @@ def display_trends(data_manager, history_manager):
                 st.metric("Total substances", len(filtered_agg_df))
             with col2:
                 if len(daily_counts) > 0:
-                    st.metric("Date première substance", daily_counts['date'].min())
+                    st.metric("Date première substance", str(daily_counts['date'].min()))
             with col3:
                 if len(daily_counts) > 0:
-                    st.metric("Date dernière substance", daily_counts['date'].max())
+                    st.metric("Date dernière substance", str(daily_counts['date'].max()))
         else:
             st.warning("Les colonnes de timestamp ne sont pas disponibles. Effectuez une mise à jour des données.")
 
