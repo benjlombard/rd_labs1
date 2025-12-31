@@ -162,7 +162,8 @@ rd_labs1/
 │   ├── logger.py               # Module de logging avec rotation
 │   ├── data_manager.py         # Gestion des données Excel
 │   ├── change_detector.py      # Détection des changements
-│   └── history_manager.py      # Gestion de l'historique
+│   ├── history_manager.py      # Gestion de l'historique
+│   └── pdf_exporter.py         # Export de rapports PDF
 ├── logs/                       # Logs de l'application (généré, gitignored)
 │   ├── echa_app_debug.log      # Logs DEBUG et plus
 │   ├── echa_app_info.log       # Logs INFO et plus
@@ -175,6 +176,7 @@ rd_labs1/
     │   ├── testc.xlsx          # Liste restriction
     │   └── testd.xlsx          # Liste complémentaire
     ├── archives/               # Archives des anciennes versions
+    ├── reports/                # Rapports PDF générés (gitignored)
     ├── aggregated_data.xlsx    # Données agrégées (généré)
     └── change_history.xlsx     # Historique des changements (généré)
 ```
@@ -285,6 +287,72 @@ logger.error("Message d'erreur", exc_info=True)
 - Exclus de Git via `.gitignore`
 - Rotation automatique quand fichier > 10MB
 
+### 5. pdf_exporter.py
+**Responsabilités** :
+- Génération de rapports PDF professionnels
+- Création de graphiques (matplotlib)
+- Mise en page avec tableaux et statistiques
+- Export automatique et téléchargement
+
+**Caractéristiques** :
+- **Format** : A4, marges optimisées
+- **Sections du rapport** :
+  - Page titre avec date/heure
+  - Statistiques générales (substances, listes, changements)
+  - Graphiques (bar chart répartition, pie chart changements)
+  - Tableaux (derniers changements, substances)
+- **Graphiques** : Matplotlib pour génération, conversion PNG → PDF
+- **Mise en page** : ReportLab avec styles personnalisés
+- **Encodage** : UTF-8 pour caractères spéciaux
+- **Pagination** : Automatique avec PageBreak
+
+**Contenu du rapport** :
+1. **Statistiques** :
+   - Total substances
+   - Substances uniques (CAS ID)
+   - Listes sources
+   - Total changements (insertions, suppressions, modifications)
+
+2. **Graphiques** :
+   - Bar chart : Répartition des substances par liste source
+   - Pie chart : Types de changements (insertion, suppression, modification)
+
+3. **Tableaux** :
+   - Derniers changements (20 max) : timestamp, type, liste, CAS ID, nom
+   - Substances (30 max) : CAS ID, nom, liste source
+
+**Méthodes principales** :
+- `generate_report(aggregated_df, history_df, output_path)` : Génère le rapport complet
+- `_add_statistics_section()` : Ajoute les statistiques
+- `_add_distribution_chart()` : Graphique répartition par liste
+- `_add_changes_chart()` : Graphique répartition des changements
+- `_add_recent_changes_table()` : Tableau des derniers changements
+- `_add_substances_table()` : Tableau des substances
+
+**Styles et couleurs** :
+- En-têtes : bleu (#1f77b4)
+- Texte : noir (#2c3e50)
+- Tableaux : fond beige/blanc alterné
+- Graphiques : palette professionnelle
+
+**Intégration** :
+- Bouton "Générer Rapport PDF" en haut de l'application
+- Téléchargement direct via Streamlit
+- Sauvegarde automatique dans `data/reports/rapport_echa_YYYYMMDD_HHMMSS.pdf`
+- Logging de toutes les opérations
+
+**Configuration** :
+```python
+from backend.pdf_exporter import PDFExporter
+
+pdf_exporter = PDFExporter()
+success = pdf_exporter.generate_report(aggregated_df, history_df, "rapport.pdf")
+```
+
+**Dépendances** :
+- `reportlab>=4.0.0` : génération PDF
+- `matplotlib>=3.8.0` : graphiques
+
 ## Application Streamlit (app.py)
 
 ### 3 Onglets Principaux
@@ -378,6 +446,8 @@ Dépendances installées :
 - pandas >= 2.2.0
 - openpyxl >= 3.1.0
 - PyYAML >= 6.0.0
+- reportlab >= 4.0.0 (pour export PDF)
+- matplotlib >= 3.8.0 (pour graphiques PDF)
 
 ### Étape 3 : Lancement
 ```bash
@@ -505,8 +575,18 @@ git push origin feature/optimize-aggregation-save
 - Console handler pour suivi temps réel
 - Singleton pour instance unique partagée
 
+### ✅ Export PDF et Rapports
+- Génération automatique de rapports PDF professionnels
+- Statistiques complètes (substances, listes, changements)
+- Graphiques intégrés (bar charts, pie charts)
+- Tableaux formatés (changements récents, substances)
+- Mise en page A4 avec styles personnalisés
+- Téléchargement direct depuis l'interface Streamlit
+- Sauvegarde automatique dans data/reports/
+- Nom de fichier avec timestamp (rapport_echa_YYYYMMDD_HHMMSS.pdf)
+
 ### ✅ Qualité du Code
-- Architecture modulaire (4 modules backend)
+- Architecture modulaire (5 modules backend)
 - Faible complexité cyclomatique
 - Documentation complète
 - Tests unitaires et intégration
@@ -560,6 +640,17 @@ sharepoint:
 2. Tester filtres par cas_name et cas_id
 3. Tester export CSV
 4. Vérifier statistiques
+
+### Test 5 : Export PDF
+1. En haut de l'application, cliquer "Générer Rapport PDF"
+2. Vérifier : Message de succès avec bouton de téléchargement
+3. Télécharger le PDF et ouvrir
+4. Vérifier le contenu :
+   - Page 1 : Titre, date, statistiques générales
+   - Page 2 : Graphique bar chart (répartition) + pie chart (changements)
+   - Page 3 : Tableau des derniers changements (20 max)
+   - Page 4 : Tableau des substances (30 max)
+5. Vérifier : Fichier sauvegardé dans `data/reports/rapport_echa_*.pdf`
 
 ## Commandes Utiles
 
@@ -644,8 +735,8 @@ streamlit run app.py --server.fileWatcherType auto
 ### Moyen Terme
 - [ ] Intégration SharePoint
 - [ ] Notifications par email lors de changements
-- [ ] Export PDF des rapports
-- [ ] Graphiques d'évolution des substances
+- [ ] Graphiques d'évolution temporelle des substances
+- [ ] Personnalisation des rapports PDF (choix des sections)
 
 ### Long Terme
 - [ ] API REST pour accès externe
@@ -668,16 +759,17 @@ Si tu dois recréer ce projet, voici les étapes EXACTES :
 
 1. **Lire CLAUDE.md** (ce fichier)
 2. **Créer la structure** :
-   - `mkdir -p backend data/input data/archives logs`
+   - `mkdir -p backend data/input data/archives data/reports logs`
 3. **Créer config.yaml** avec la structure décrite ci-dessus
-4. **Créer les 4 modules backend** :
+4. **Créer les 5 modules backend** :
    - `logger.py` avec rotation de fichiers et niveaux DEBUG/INFO/ERROR
    - `data_manager.py` avec optimisation de sauvegarde et logging
    - `change_detector.py` avec comparaison colonnes communes et logging
    - `history_manager.py` avec archivage optionnel et logging
-5. **Créer app.py** avec 3 onglets Streamlit
-6. **Créer requirements.txt** avec versions >= flexibles
-7. **Créer .gitignore** excluant venv/, .claude/, test_*.py, logs/
+   - `pdf_exporter.py` avec génération de rapports PDF (statistiques, graphiques, tableaux)
+5. **Créer app.py** avec 3 onglets Streamlit + section export PDF
+6. **Créer requirements.txt** avec versions >= flexibles (streamlit, pandas, openpyxl, PyYAML, reportlab, matplotlib)
+7. **Créer .gitignore** excluant venv/, .claude/, test_*.py, logs/, data/reports/
 8. **Créer README.md** avec documentation utilisateur
 9. **Initialiser git** et pousser sur GitHub
 10. **Créer environnement virtuel** et installer dépendances
