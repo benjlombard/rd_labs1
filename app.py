@@ -294,6 +294,49 @@ def display_update_section(data_manager, change_detector, history_manager):
 
                         changes_df = change_detector.detect_all_changes(old_lists, new_lists)
 
+                        # Créer le tableau récapitulatif par liste source
+                        st.subheader("📋 Récapitulatif des Changements par Liste")
+
+                        summary_data = []
+                        for list_config in data_manager.config['source_files']['lists']:
+                            list_name = list_config['name']
+
+                            # Filtrer les changements pour cette liste
+                            if not changes_df.empty:
+                                list_changes = changes_df[changes_df['source_list'] == list_name]
+
+                                if not list_changes.empty:
+                                    insertions = len(list_changes[list_changes['change_type'] == 'insertion'])
+                                    modifications = len(list_changes[list_changes['change_type'] == 'modification'])
+                                    deletions = len(list_changes[list_changes['change_type'] == 'deletion'])
+
+                                    summary_data.append({
+                                        'Liste Source': list_name,
+                                        'Insertions': insertions,
+                                        'Modifications': modifications,
+                                        'Suppressions': deletions,
+                                        'Statut': '✅ Changements détectés'
+                                    })
+                                else:
+                                    summary_data.append({
+                                        'Liste Source': list_name,
+                                        'Insertions': 0,
+                                        'Modifications': 0,
+                                        'Suppressions': 0,
+                                        'Statut': '⚪ Pas de changement'
+                                    })
+                            else:
+                                summary_data.append({
+                                    'Liste Source': list_name,
+                                    'Insertions': 0,
+                                    'Modifications': 0,
+                                    'Suppressions': 0,
+                                    'Statut': '⚪ Pas de changement'
+                                })
+
+                        summary_df = pd.DataFrame(summary_data)
+                        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
                         if not changes_df.empty:
                             history_manager.save_changes(changes_df)
                             message_placeholder2.success(f"{len(changes_df)} changements détectés et enregistrés!")
