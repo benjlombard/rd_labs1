@@ -3,6 +3,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Tuple
 import os
+import shutil
 from datetime import datetime
 from backend.logger import get_logger
 
@@ -199,3 +200,38 @@ class DataManager:
         mod_timestamp = os.path.getmtime(file_path)
         mod_date = datetime.fromtimestamp(mod_timestamp)
         return mod_date.strftime('%Y-%m-%d %H:%M:%S')
+
+    def archive_source_files(self) -> int:
+        """
+        Archive tous les fichiers Excel sources en les déplaçant vers data/archives
+        avec un timestamp dans le nom du fichier.
+        Retourne le nombre de fichiers archivés.
+        """
+        self.logger.info("Debut de l'archivage des fichiers sources")
+        archive_folder = self.data_folder / "archives"
+        archive_folder.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archived_count = 0
+
+        for list_config in self.config['source_files']['lists']:
+            list_name = list_config['name']
+            list_file = list_config['file']
+            file_path = self.data_folder / "input" / list_file
+
+            if file_path.exists():
+                # Créer le nom du fichier archivé avec timestamp
+                file_stem = file_path.stem  # Nom sans extension
+                file_ext = file_path.suffix  # Extension avec le point
+                archive_name = f"{file_stem}_{timestamp}{file_ext}"
+                archive_path = archive_folder / archive_name
+
+                # Copier le fichier (au lieu de déplacer pour garder l'original)
+                shutil.copy2(str(file_path), str(archive_path))
+                self.logger.info(f"Fichier archive (copie): {list_file} -> {archive_name}")
+                archived_count += 1
+            else:
+                self.logger.warning(f"Fichier source non trouve: {file_path}")
+
+        self.logger.info(f"Archivage termine: {archived_count} fichiers archives")
+        return archived_count

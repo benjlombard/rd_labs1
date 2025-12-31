@@ -252,6 +252,16 @@ def display_update_section(data_manager, change_detector, history_manager):
     st.info("Cette section permet de charger les nouvelles données et de détecter les changements.")
 
     if st.button("Charger et Agréger les Données", type="primary"):
+        with st.spinner("Archivage des fichiers sources..."):
+            try:
+                # Archiver les fichiers sources avant le chargement
+                archived_count = data_manager.archive_source_files()
+                if archived_count > 0:
+                    st.info(f"📦 {archived_count} fichiers archivés dans data/archives/")
+
+            except Exception as e:
+                st.warning(f"Avertissement lors de l'archivage: {str(e)}")
+
         with st.spinner("Chargement des données en cours..."):
             try:
                 old_aggregated = data_manager.load_aggregated_data()
