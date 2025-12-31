@@ -348,42 +348,83 @@ def display_trends(data_manager, history_manager):
             st.info("Aucune donnée disponible. Veuillez effectuer une mise à jour dans l'onglet 'Mise à Jour'.")
             return
 
-        # Filtre par liste source
+        # Filtre par liste source pour l'historique
         st.subheader("Filtres")
+
+        # Filtre multiselect pour le graphique d'évolution
+        available_lists = sorted(list(aggregated_df['source_list'].unique()))
+
+        st.markdown("**Sélectionner les listes sources à afficher dans le graphique d'évolution:**")
+        selected_lists_evolution = st.multiselect(
+            "Listes sources",
+            options=available_lists,
+            default=available_lists,
+            key="trends_multiselect_evolution"
+        )
+
+        # Filtre pour l'historique des changements (selectbox classique)
+        st.markdown("**Filtre pour les tendances des changements:**")
         col1, col2 = st.columns(2)
-
         with col1:
-            source_lists = ['Toutes'] + sorted(list(aggregated_df['source_list'].unique()))
-            selected_list_trends = st.selectbox("Filtrer par liste source", source_lists, key="trends_source_filter")
+            source_lists_hist = ['Toutes'] + available_lists
+            selected_list_hist = st.selectbox("Filtrer par liste source", source_lists_hist, key="trends_source_filter_hist")
 
-        # Filtrer les données si nécessaire
-        filtered_agg_df = aggregated_df.copy()
+        # Filtrer les données de l'historique
         filtered_hist_df = history_df.copy()
-
-        if selected_list_trends != 'Toutes':
-            filtered_agg_df = filtered_agg_df[filtered_agg_df['source_list'] == selected_list_trends]
+        if selected_list_hist != 'Toutes':
             if not filtered_hist_df.empty:
-                filtered_hist_df = filtered_hist_df[filtered_hist_df['source_list'] == selected_list_trends]
+                filtered_hist_df = filtered_hist_df[filtered_hist_df['source_list'] == selected_list_hist]
 
         st.divider()
 
-        # Graphique 1: Évolution du nombre de substances dans le temps
-        st.subheader("📈 Évolution du Nombre de Substances")
+        # Graphique 1: Évolution du nombre de substances dans le temps (multi-lignes)
+        st.subheader("📈 Évolution du Nombre de Substances par Liste Source")
 
-        if 'created_at' in filtered_agg_df.columns:
+        if 'created_at' in aggregated_df.columns and len(selected_lists_evolution) > 0:
+            # Filtrer seulement pour les listes sélectionnées
+            filtered_agg_df = aggregated_df[aggregated_df['source_list'].isin(selected_lists_evolution)].copy()
+
             # Convertir created_at en datetime
             filtered_agg_df['created_at_dt'] = pd.to_datetime(filtered_agg_df['created_at'], errors='coerce')
 
-            # Grouper par date et compter le nombre cumulatif de substances
-            daily_counts = filtered_agg_df.groupby(filtered_agg_df['created_at_dt'].dt.date).size().reset_index(name='count')
-            daily_counts['cumulative'] = daily_counts['count'].cumsum()
-            daily_counts.columns = ['date', 'nouvelles_substances', 'total_substances']
+            # Obtenir toutes les dates uniques
+            all_dates = sorted(filtered_agg_df['created_at_dt'].dt.date.unique())
 
-            # Convertir les dates en string pour l'affichage
-            daily_counts['date_str'] = daily_counts['date'].astype(str)
+            # Créer un DataFrame pour le graphique avec toutes les dates
+            chart_data_dict = {'date': all_dates}
+
+            # Calculer l'évolution cumulée pour chaque liste source
+            for source_list in selected_lists_evolution:
+                list_data = filtered_agg_df[filtered_agg_df['source_list'] == source_list]
+                daily_counts = list_data.groupby(list_data['created_at_dt'].dt.date).size()
+
+                # Créer une série complète avec toutes les dates
+                cumulative_counts = []
+                cumul = 0
+                for date in all_dates:
+                    if date in daily_counts.index:
+                        cumul += daily_counts[date]
+                    cumulative_counts.append(cumul)
+
+                chart_data_dict[source_list] = cumulative_counts
+
+            # Calculer le total cumulé (somme de toutes les listes)
+            total_cumulative = [0] * len(all_dates)
+            for i in range(len(all_dates)):
+                for source_list in selected_lists_evolution:
+                    total_cumulative[i] += chart_data_dict[source_list][i]
+
+            chart_data_dict['TOTAL'] = total_cumulative
+
+            # Créer le DataFrame final
+            evolution_df = pd.DataFrame(chart_data_dict)
+            evolution_df['date_str'] = evolution_df['date'].astype(str)
+
+            # Colonnes à afficher (toutes sauf 'date')
+            columns_to_plot = [col for col in evolution_df.columns if col not in ['date', 'date_str']]
 
             # Afficher le graphique
-            chart_data = daily_counts.set_index('date_str')[['total_substances']]
+            chart_data = evolution_df.set_index('date_str')[columns_to_plot]
             st.line_chart(chart_data, use_container_width=True)
 
             # Afficher les statistiques
@@ -391,11 +432,13 @@ def display_trends(data_manager, history_manager):
             with col1:
                 st.metric("Total substances", len(filtered_agg_df))
             with col2:
-                if len(daily_counts) > 0:
-                    st.metric("Date première substance", str(daily_counts['date'].min()))
+                if len(all_dates) > 0:
+                    st.metric("Date première substance", str(min(all_dates)))
             with col3:
-                if len(daily_counts) > 0:
-                    st.metric("Date dernière substance", str(daily_counts['date'].max()))
+                if len(all_dates) > 0:
+                    st.metric("Date dernière substance", str(max(all_dates)))
+        elif len(selected_lists_evolution) == 0:
+            st.warning("Veuillez sélectionner au moins une liste source pour afficher le graphique.")
         else:
             st.warning("Les colonnes de timestamp ne sont pas disponibles. Effectuez une mise à jour des données.")
 
