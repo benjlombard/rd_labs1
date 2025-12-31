@@ -189,20 +189,29 @@ rd_labs1/
 - Agréger les données de toutes les listes
 - Sauvegarder le fichier agrégé (avec optimisation)
 - Comparer les DataFrames pour éviter les réécritures inutiles
+- Gérer les timestamps de création et modification
 
 **Méthodes principales** :
 - `load_cas_source()` : Charge la base principale
 - `load_list_file(list_name)` : Charge un fichier spécifique
 - `load_all_lists()` : Charge tous les fichiers
-- `aggregate_all_data()` : Agrège toutes les listes
+- `aggregate_all_data()` : Agrège toutes les listes avec timestamps
 - `save_aggregated_data(df, force=False)` : Sauvegarde optimisée (retourne True/False)
 - `_dataframes_are_equal(df1, df2)` : Compare deux DataFrames
+- `_update_timestamps(new_df)` : Ajoute ou met à jour created_at et updated_at
+- `get_file_modification_date(list_name)` : Retourne la date de modification du fichier source
 
 **Optimisation implémentée** :
 - Ne réécrit le fichier agrégé QUE si les données ont changé
 - Évite les I/O disque inutiles
 - Préserve la date de modification si aucun changement
 - Paramètre `force=True` pour forcer la sauvegarde
+
+**Gestion des Timestamps** :
+- **created_at** : Date de première apparition de la substance (conservée lors des mises à jour)
+- **updated_at** : Date de dernière modification des données (mise à jour si changement détecté)
+- Clé unique : `cas_id + source_list` pour identifier les substances
+- Comparaison intelligente : exclut les colonnes de métadonnées lors de la comparaison
 
 ### 2. change_detector.py
 **Responsabilités** :
@@ -355,14 +364,15 @@ success = pdf_exporter.generate_report(aggregated_df, history_df, "rapport.pdf")
 
 ## Application Streamlit (app.py)
 
-### 3 Onglets Principaux
+### 4 Onglets Principaux
 
 #### Onglet 1 : Données Agrégées
 - Tableau complet de toutes les substances
-- Colonne `source_list` indiquant la provenance
+- Colonnes `source_list`, `created_at`, `updated_at`
 - Filtres :
   - Par nom de substance (cas_name)
   - Par identifiant CAS (cas_id)
+  - **Par liste source (source_list)**
 - Statistiques :
   - Total de substances
   - Substances uniques
@@ -378,14 +388,28 @@ success = pdf_exporter.generate_report(aggregated_df, history_df, "rapport.pdf")
 - Statistiques des changements
 - Export CSV de l'historique
 
-#### Onglet 3 : Mise à Jour
+#### Onglet 3 : Tendances
+- **Graphique d'évolution du nombre de substances** :
+  - Ligne temporelle montrant l'accumulation de substances
+  - Basé sur la colonne `created_at`
+  - Statistiques : total, première et dernière date
+- **Graphique de tendances des changements** :
+  - Bar chart des insertions/suppressions/modifications par date
+  - Basé sur l'historique avec `timestamp`
+  - Statistiques par type de changement
+- **Tableau des derniers changements** (10 plus récents)
+- **Filtre par liste source** pour analyser une liste spécifique
+
+#### Onglet 4 : Mise à Jour
 - Bouton "Charger et Agréger les Données"
 - Messages adaptatifs :
   - **Vert** : "Données sauvegardées avec succès" (fichier modifié)
   - **Bleu** : "Aucun changement détecté, fichier non modifié" (optimisé)
+  - **Disparition automatique après 5 secondes**
 - Détection automatique des changements
 - Aperçu des changements détectés
 - Vérification de la présence des fichiers sources
+- **Affichage de la date de modification des fichiers Excel** (4ème colonne)
 
 ## Configuration (config.yaml)
 
@@ -585,6 +609,27 @@ git push origin feature/optimize-aggregation-save
 - Sauvegarde automatique dans data/reports/
 - Nom de fichier avec timestamp (rapport_echa_YYYYMMDD_HHMMSS.pdf)
 
+### ✅ Tableau de Bord de Tendances (Nouvel Onglet)
+- Graphique d'évolution temporelle du nombre de substances
+- Graphique de tendances des changements (insertions/suppressions/modifications)
+- Analyse par liste source avec filtre dédié
+- Statistiques cumulatives et par période
+- Visualisation des 10 derniers changements
+- Graphiques interactifs avec Streamlit charts
+
+### ✅ Gestion des Timestamps
+- Colonnes `created_at` et `updated_at` dans le tableau agrégé
+- Tracking automatique de la date de première apparition
+- Mise à jour conditionnelle basée sur les changements de données
+- Affichage dans l'interface Streamlit
+- Persistance entre les mises à jour
+
+### ✅ Améliorations UX
+- Filtre par liste source dans l'onglet Données Agrégées
+- Affichage des dates de modification des fichiers Excel sources
+- Disparition automatique des messages de succès (5 secondes)
+- Meilleure visibilité sur l'état des fichiers
+
 ### ✅ Qualité du Code
 - Architecture modulaire (5 modules backend)
 - Faible complexité cyclomatique
@@ -651,6 +696,37 @@ sharepoint:
    - Page 3 : Tableau des derniers changements (20 max)
    - Page 4 : Tableau des substances (30 max)
 5. Vérifier : Fichier sauvegardé dans `data/reports/rapport_echa_*.pdf`
+
+### Test 6 : Timestamps et Filtres
+1. Onglet "Données Agrégées"
+2. Vérifier : Présence des colonnes `created_at` et `updated_at`
+3. Tester le nouveau filtre "Par liste source"
+4. Vérifier : Filtrage correct des données
+5. Modifier un fichier Excel et recharger
+6. Vérifier : `created_at` conservée, `updated_at` mise à jour
+
+### Test 7 : Onglet Tendances
+1. Onglet "Tendances"
+2. Vérifier : Graphique d'évolution du nombre de substances (ligne)
+3. Vérifier : Graphique de tendances des changements (bar chart)
+4. Tester le filtre par liste source
+5. Vérifier : Statistiques affichées (total, insertions, suppressions, modifications)
+6. Vérifier : Tableau des 10 derniers changements
+
+### Test 8 : Dates des Fichiers
+1. Onglet "Mise à Jour"
+2. Section "Informations sur les Fichiers"
+3. Vérifier : 4ème colonne affiche la date de modification (📅 YYYY-MM-DD HH:MM:SS)
+4. Modifier un fichier Excel
+5. Recharger la page
+6. Vérifier : Date mise à jour
+
+### Test 9 : Disparition des Messages
+1. Onglet "Mise à Jour"
+2. Cliquer "Charger et Agréger les Données"
+3. Observer les messages de succès/info
+4. Vérifier : Messages disparaissent automatiquement après 5 secondes
+5. Vérifier : Aperçu des changements reste affiché
 
 ## Commandes Utiles
 
@@ -728,21 +804,24 @@ streamlit run app.py --server.fileWatcherType auto
 ## Évolutions Futures Possibles
 
 ### Court Terme
-- [ ] Corriger le warning `use_container_width` (remplacer par `width`)
 - [ ] Ajouter des tests unitaires complets
 - [ ] Créer un script de téléchargement automatique ECHA
+- [ ] Export Excel enrichi avec mise en forme
+- [ ] Comparaison de versions côte à côte
 
 ### Moyen Terme
 - [ ] Intégration SharePoint
 - [ ] Notifications par email lors de changements
-- [ ] Graphiques d'évolution temporelle des substances
 - [ ] Personnalisation des rapports PDF (choix des sections)
+- [ ] Recherche avancée multi-critères avec opérateurs logiques
+- [ ] Annotations et notes utilisateur sur les substances
 
 ### Long Terme
 - [ ] API REST pour accès externe
 - [ ] Authentification utilisateurs
 - [ ] Multi-tenancy (plusieurs organisations)
 - [ ] Machine Learning pour prédire les changements
+- [ ] Gestion de favoris et watchlists
 
 ## Références
 
@@ -779,3 +858,7 @@ Si tu dois recréer ce projet, voici les étapes EXACTES :
 - Ne pas oublier les optimisations et corrections de bugs mentionnées ci-dessus
 - S'assurer que le module logger est créé EN PREMIER (les autres modules en dépendent)
 - Intégrer `get_logger()` dans tous les modules backend pour le logging centralisé
+- Implémenter la gestion des timestamps (created_at, updated_at) dans data_manager.py
+- Créer l'onglet "Tendances" avec les graphiques d'évolution temporelle
+- Ajouter le filtre source_list et l'affichage des dates de modification
+- Implémenter la disparition automatique des messages après 5 secondes

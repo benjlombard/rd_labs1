@@ -3,6 +3,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Tuple
 import os
+from datetime import datetime
 from backend.logger import get_logger
 
 
@@ -56,8 +57,92 @@ class DataManager:
             self.logger.debug(f"Liste {list_name} ajoutee: {len(df_copy)} lignes")
 
         aggregated_df = pd.concat(aggregated_frames, ignore_index=True)
+
+        # Ajouter ou mettre à jour les timestamps
+        aggregated_df = self._update_timestamps(aggregated_df)
+
         self.logger.info(f"Agregation terminee: {len(aggregated_df)} enregistrements au total")
         return aggregated_df
+
+    def _update_timestamps(self, new_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Ajoute ou met à jour les colonnes created_at et updated_at.
+        - created_at: date de première apparition (conservée si substance existante)
+        - updated_at: date de dernière modification (mise à jour si données changées)
+        """
+        self.logger.debug("Mise a jour des timestamps")
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        # Charger l'ancien fichier agrégé s'il existe
+        old_df = self.load_aggregated_data()
+
+        if old_df.empty:
+            # Première agrégation: toutes les substances sont nouvelles
+            self.logger.debug("Premiere agregation: creation des timestamps pour toutes les lignes")
+            new_df['created_at'] = current_time
+            new_df['updated_at'] = current_time
+            return new_df
+
+        # Créer une clé unique pour identifier les substances (cas_id + source_list)
+        new_df['_key'] = new_df['cas_id'].astype(str) + '|' + new_df['source_list'].astype(str)
+
+        if 'created_at' in old_df.columns and 'updated_at' in old_df.columns:
+            old_df['_key'] = old_df['cas_id'].astype(str) + '|' + old_df['source_list'].astype(str)
+
+            # Créer un dictionnaire des timestamps existants
+            old_timestamps = old_df.set_index('_key')[['created_at', 'updated_at']].to_dict('index')
+
+            # Pour chaque ligne du nouveau DataFrame
+            created_at_list = []
+            updated_at_list = []
+
+            for idx, row in new_df.iterrows():
+                key = row['_key']
+                if key in old_timestamps:
+                    # Substance existante: conserver created_at, vérifier si mise à jour nécessaire
+                    created_at_list.append(old_timestamps[key]['created_at'])
+
+                    # Comparer les données (sans les colonnes de métadonnées)
+                    old_row = old_df[old_df['_key'] == key].iloc[0]
+
+                    # Colonnes à comparer (exclure _key, created_at, updated_at, source_list)
+                    cols_to_compare = [col for col in new_df.columns
+                                      if col not in ['_key', 'created_at', 'updated_at', 'source_list']]
+
+                    data_changed = False
+                    for col in cols_to_compare:
+                        if col in old_row.index:
+                            old_val = old_row[col]
+                            new_val = row[col]
+                            # Gérer les NaN
+                            if pd.isna(old_val) and pd.isna(new_val):
+                                continue
+                            if old_val != new_val:
+                                data_changed = True
+                                break
+
+                    if data_changed:
+                        updated_at_list.append(current_time)
+                    else:
+                        updated_at_list.append(old_timestamps[key]['updated_at'])
+                else:
+                    # Nouvelle substance
+                    created_at_list.append(current_time)
+                    updated_at_list.append(current_time)
+
+            new_df['created_at'] = created_at_list
+            new_df['updated_at'] = updated_at_list
+        else:
+            # L'ancien fichier n'a pas de timestamps: traiter comme première agrégation
+            self.logger.debug("Ancien fichier sans timestamps: creation pour toutes les lignes")
+            new_df['created_at'] = current_time
+            new_df['updated_at'] = current_time
+
+        # Supprimer la colonne temporaire _key
+        new_df = new_df.drop(columns=['_key'])
+
+        self.logger.debug(f"Timestamps mis a jour: {len(new_df)} lignes")
+        return new_df
 
     def save_aggregated_data(self, df: pd.DataFrame, force: bool = False) -> bool:
         output_path = Path(self.config['output_files']['aggregated_data'])
@@ -98,3 +183,19 @@ class DataManager:
         if list_config:
             return list_config.get('description', list_name)
         return list_name
+
+    def get_file_modification_date(self, list_name: str) -> str:
+        """
+        Retourne la date de modification d'un fichier Excel source.
+        """
+        list_config = next((l for l in self.config['source_files']['lists'] if l['name'] == list_name), None)
+        if not list_config:
+            return "N/A"
+
+        file_path = self.data_folder / "input" / list_config['file']
+        if not file_path.exists():
+            return "Fichier non trouvé"
+
+        mod_timestamp = os.path.getmtime(file_path)
+        mod_date = datetime.fromtimestamp(mod_timestamp)
+        return mod_date.strftime('%Y-%m-%d %H:%M:%S')

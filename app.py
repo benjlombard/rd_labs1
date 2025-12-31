@@ -3,6 +3,7 @@ import pandas as pd
 import sys
 from pathlib import Path
 from datetime import datetime
+import time
 
 sys.path.append(str(Path(__file__).parent / "backend"))
 
@@ -36,7 +37,7 @@ def main():
     display_pdf_export_section(data_manager, history_manager)
     st.divider()
 
-    tabs = st.tabs(["Données Agrégées", "Historique des Changements", "Mise à Jour"])
+    tabs = st.tabs(["Données Agrégées", "Historique des Changements", "Tendances", "Mise à Jour"])
 
     with tabs[0]:
         display_aggregated_data(data_manager)
@@ -45,6 +46,9 @@ def main():
         display_change_history(history_manager, data_manager)
 
     with tabs[2]:
+        display_trends(data_manager, history_manager)
+
+    with tabs[3]:
         display_update_section(data_manager, change_detector, history_manager)
 
 
@@ -59,13 +63,17 @@ def display_aggregated_data(data_manager):
             return
 
         st.subheader("Filtres")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
 
         with col1:
             cas_name_filter = st.text_input("Filtrer par nom de substance (cas_name)")
 
         with col2:
             cas_id_filter = st.text_input("Filtrer par identifiant CAS (cas_id)")
+
+        with col3:
+            source_lists = ['Toutes'] + sorted(list(aggregated_df['source_list'].unique()))
+            selected_source_list = st.selectbox("Filtrer par liste source", source_lists)
 
         filtered_df = aggregated_df.copy()
 
@@ -78,6 +86,9 @@ def display_aggregated_data(data_manager):
             filtered_df = filtered_df[
                 filtered_df['cas_id'].astype(str).str.contains(cas_id_filter, case=False, na=False)
             ]
+
+        if selected_source_list != 'Toutes':
+            filtered_df = filtered_df[filtered_df['source_list'] == selected_source_list]
 
         st.subheader(f"Tableau Agrégé ({len(filtered_df)} substances)")
 
@@ -214,10 +225,14 @@ def display_update_section(data_manager, change_detector, history_manager):
                 aggregated_df = data_manager.aggregate_all_data()
                 was_saved = data_manager.save_aggregated_data(aggregated_df)
 
+                # Créer des placeholders pour les messages temporaires
+                message_placeholder1 = st.empty()
+                message_placeholder2 = st.empty()
+
                 if was_saved:
-                    st.success(f"Données agrégées et sauvegardées avec succès! {len(aggregated_df)} enregistrements chargés.")
+                    message_placeholder1.success(f"Données agrégées et sauvegardées avec succès! {len(aggregated_df)} enregistrements chargés.")
                 else:
-                    st.info(f"Données agrégées ({len(aggregated_df)} enregistrements). Aucun changement détecté, fichier non modifié.")
+                    message_placeholder1.info(f"Données agrégées ({len(aggregated_df)} enregistrements). Aucun changement détecté, fichier non modifié.")
 
                 if not old_aggregated.empty:
                     with st.spinner("Détection des changements..."):
@@ -227,7 +242,9 @@ def display_update_section(data_manager, change_detector, history_manager):
                         for list_name in new_lists.keys():
                             old_list_data = old_aggregated[old_aggregated['source_list'] == list_name]
                             if not old_list_data.empty:
-                                old_list_data = old_list_data.drop(columns=['source_list'])
+                                # Exclure les colonnes de timestamp lors de la comparaison
+                                cols_to_drop = ['source_list', 'created_at', 'updated_at']
+                                old_list_data = old_list_data.drop(columns=[col for col in cols_to_drop if col in old_list_data.columns])
                                 common_cols = [col for col in new_lists[list_name].columns if col in old_list_data.columns]
                                 old_lists[list_name] = old_list_data[common_cols]
 
@@ -235,12 +252,17 @@ def display_update_section(data_manager, change_detector, history_manager):
 
                         if not changes_df.empty:
                             history_manager.save_changes(changes_df)
-                            st.success(f"{len(changes_df)} changements détectés et enregistrés!")
+                            message_placeholder2.success(f"{len(changes_df)} changements détectés et enregistrés!")
 
                             st.subheader("Aperçu des Changements")
                             st.dataframe(changes_df.head(10), use_container_width=True)
                         else:
-                            st.info("Aucun changement détecté.")
+                            message_placeholder2.info("Aucun changement détecté.")
+
+                # Faire disparaître les messages après 5 secondes
+                time.sleep(5)
+                message_placeholder1.empty()
+                message_placeholder2.empty()
 
             except Exception as e:
                 st.error(f"Erreur lors de la mise à jour: {str(e)}")
@@ -260,7 +282,7 @@ def display_update_section(data_manager, change_detector, history_manager):
             file_path = Path(data_manager.data_folder) / "input" / list_file
             exists = file_path.exists()
 
-            col1, col2, col3 = st.columns([2, 3, 2])
+            col1, col2, col3, col4 = st.columns([2, 3, 2, 2])
             with col1:
                 st.write(f"**{list_name}**")
             with col2:
@@ -270,9 +292,133 @@ def display_update_section(data_manager, change_detector, history_manager):
                     st.success("Fichier présent")
                 else:
                     st.error("Fichier manquant")
+            with col4:
+                if exists:
+                    mod_date = data_manager.get_file_modification_date(list_name)
+                    st.write(f"📅 {mod_date}")
+                else:
+                    st.write("")
 
     except Exception as e:
         st.error(f"Erreur lors de la lecture des informations: {str(e)}")
+
+
+def display_trends(data_manager, history_manager):
+    st.header("Tendances et Évolution Temporelle")
+
+    try:
+        aggregated_df = data_manager.load_aggregated_data()
+        history_df = history_manager.load_history()
+
+        if aggregated_df.empty:
+            st.info("Aucune donnée disponible. Veuillez effectuer une mise à jour dans l'onglet 'Mise à Jour'.")
+            return
+
+        # Filtre par liste source
+        st.subheader("Filtres")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            source_lists = ['Toutes'] + sorted(list(aggregated_df['source_list'].unique()))
+            selected_list_trends = st.selectbox("Filtrer par liste source", source_lists, key="trends_source_filter")
+
+        # Filtrer les données si nécessaire
+        filtered_agg_df = aggregated_df.copy()
+        filtered_hist_df = history_df.copy()
+
+        if selected_list_trends != 'Toutes':
+            filtered_agg_df = filtered_agg_df[filtered_agg_df['source_list'] == selected_list_trends]
+            if not filtered_hist_df.empty:
+                filtered_hist_df = filtered_hist_df[filtered_hist_df['source_list'] == selected_list_trends]
+
+        st.divider()
+
+        # Graphique 1: Évolution du nombre de substances dans le temps
+        st.subheader("📈 Évolution du Nombre de Substances")
+
+        if 'created_at' in filtered_agg_df.columns:
+            # Convertir created_at en datetime
+            filtered_agg_df['created_at_dt'] = pd.to_datetime(filtered_agg_df['created_at'], errors='coerce')
+
+            # Grouper par date et compter le nombre cumulatif de substances
+            daily_counts = filtered_agg_df.groupby(filtered_agg_df['created_at_dt'].dt.date).size().reset_index(name='count')
+            daily_counts['cumulative'] = daily_counts['count'].cumsum()
+            daily_counts.columns = ['date', 'nouvelles_substances', 'total_substances']
+
+            # Afficher le graphique
+            st.line_chart(daily_counts.set_index('date')[['total_substances']], use_container_width=True)
+
+            # Afficher les statistiques
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total substances", len(filtered_agg_df))
+            with col2:
+                if len(daily_counts) > 0:
+                    st.metric("Date première substance", daily_counts['date'].min())
+            with col3:
+                if len(daily_counts) > 0:
+                    st.metric("Date dernière substance", daily_counts['date'].max())
+        else:
+            st.warning("Les colonnes de timestamp ne sont pas disponibles. Effectuez une mise à jour des données.")
+
+        st.divider()
+
+        # Graphique 2: Tendances des changements
+        st.subheader("📊 Tendances des Changements")
+
+        if not filtered_hist_df.empty and 'timestamp' in filtered_hist_df.columns:
+            # Convertir timestamp en datetime
+            filtered_hist_df['timestamp_dt'] = pd.to_datetime(filtered_hist_df['timestamp'], errors='coerce')
+            filtered_hist_df['date'] = filtered_hist_df['timestamp_dt'].dt.date
+
+            # Grouper par date et type de changement
+            changes_by_date = filtered_hist_df.groupby(['date', 'change_type']).size().reset_index(name='count')
+
+            # Pivoter pour avoir les types de changements en colonnes
+            changes_pivot = changes_by_date.pivot(index='date', columns='change_type', values='count').fillna(0)
+
+            # Afficher le graphique
+            st.bar_chart(changes_pivot, use_container_width=True)
+
+            # Statistiques des changements
+            col1, col2, col3, col4 = st.columns(4)
+
+            with col1:
+                st.metric("Total changements", len(filtered_hist_df))
+
+            with col2:
+                if 'insertion' in changes_pivot.columns:
+                    st.metric("Insertions", int(changes_pivot['insertion'].sum()))
+                else:
+                    st.metric("Insertions", 0)
+
+            with col3:
+                if 'deletion' in changes_pivot.columns:
+                    st.metric("Suppressions", int(changes_pivot['deletion'].sum()))
+                else:
+                    st.metric("Suppressions", 0)
+
+            with col4:
+                if 'modification' in changes_pivot.columns:
+                    st.metric("Modifications", int(changes_pivot['modification'].sum()))
+                else:
+                    st.metric("Modifications", 0)
+
+            # Tableau des changements récents
+            st.subheader("Derniers Changements")
+            recent_changes = filtered_hist_df.sort_values('timestamp_dt', ascending=False).head(10)
+
+            if not recent_changes.empty:
+                display_cols = ['timestamp', 'change_type', 'source_list', 'cas_id', 'cas_name']
+                available_cols = [col for col in display_cols if col in recent_changes.columns]
+                st.dataframe(recent_changes[available_cols], use_container_width=True)
+
+        else:
+            st.info("Aucun changement enregistré pour le moment. Les tendances apparaîtront après la première mise à jour.")
+
+    except Exception as e:
+        st.error(f"Erreur lors de l'affichage des tendances: {str(e)}")
+        st.exception(e)
 
 
 def display_pdf_export_section(data_manager, history_manager):
