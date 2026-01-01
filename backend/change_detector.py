@@ -18,10 +18,21 @@ class ChangeDetector:
                 changes.append(self._create_change_record('insertion', list_name, row, None))
             return pd.DataFrame(changes)
 
+        if new_df.empty:
+            for _, row in old_df.iterrows():
+                changes.append(self._create_change_record('deletion', list_name, None, row))
+            return pd.DataFrame(changes)
+
         old_df = old_df.copy()
         new_df = new_df.copy()
 
         cas_id_col = 'cas_id'
+
+        # Ignorer les lignes où cas_id est nul pour éviter les erreurs d'indexation.
+        # Les valeurs nulles (pd.NA, etc.) peuvent causer des problèmes d'indexation.
+        old_df = old_df.dropna(subset=[cas_id_col])
+        new_df = new_df.dropna(subset=[cas_id_col])
+
         old_ids = set(old_df[cas_id_col].values)
         new_ids = set(new_df[cas_id_col].values)
 
@@ -91,14 +102,15 @@ class ChangeDetector:
 
     def detect_all_changes(self, old_lists: Dict[str, pd.DataFrame],
                           new_lists: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-        self.logger.info(f"Detection des changements pour {len(new_lists)} listes")
+        all_list_names = set(old_lists.keys()) | set(new_lists.keys())
+        self.logger.info(f"Detection des changements pour {len(all_list_names)} listes (anciennes et nouvelles)")
         all_changes = []
 
-        for list_name in new_lists.keys():
+        for list_name in all_list_names:
             old_df = old_lists.get(list_name, pd.DataFrame())
-            new_df = new_lists[list_name]
+            new_df = new_lists.get(list_name, pd.DataFrame())
 
-            self.logger.debug(f"Detection pour {list_name}: {len(old_df)} -> {len(new_df)} enregistrements")
+            self.logger.debug(f"Detection pour {list_name}: {len(old_df)} anciennes -> {len(new_df)} nouvelles")
             changes_df = self.detect_changes_for_list(old_df, new_df, list_name)
             if not changes_df.empty:
                 all_changes.append(changes_df)
