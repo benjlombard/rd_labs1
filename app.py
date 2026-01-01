@@ -413,6 +413,10 @@ def display_aggregated_data(data_manager, watchlist_manager, risk_analyzer, hist
             st.session_state.cas_id_filter_agg = ""
         if 'source_list_filter_agg' not in st.session_state:
             st.session_state.source_list_filter_agg = "Toutes"
+        if 'updated_today_filter_agg' not in st.session_state:
+            st.session_state.updated_today_filter_agg = False
+        if 'created_today_filter_agg' not in st.session_state:
+            st.session_state.created_today_filter_agg = False
 
         # Créer une ligne pour les filtres et le bouton
         col1, col2, col3, col_btn = st.columns([2, 2, 2, 1])
@@ -438,11 +442,30 @@ def display_aggregated_data(data_manager, watchlist_manager, risk_analyzer, hist
                 index=source_lists.index(st.session_state.source_list_filter_agg) if st.session_state.source_list_filter_agg in source_lists else 0
             )
 
+        # Deuxième ligne pour les filtres de date
+        col1_date, col2_date, col3_date, col_btn_space = st.columns([2, 2, 2, 1])
+
+        with col1_date:
+            st.checkbox(
+                "📅 Mis à jour aujourd'hui",
+                key="updated_today_filter_agg",
+                help="Afficher uniquement les substances mises à jour aujourd'hui"
+            )
+
+        with col2_date:
+            st.checkbox(
+                "🆕 Créé aujourd'hui",
+                key="created_today_filter_agg",
+                help="Afficher uniquement les substances créées aujourd'hui"
+            )
+
         # Définir le callback pour réinitialiser les filtres
         def reset_filters_callback():
             st.session_state.cas_name_filter_agg = ""
             st.session_state.cas_id_filter_agg = ""
             st.session_state.source_list_filter_agg = "Toutes"
+            st.session_state.updated_today_filter_agg = False
+            st.session_state.created_today_filter_agg = False
 
         with col_btn:
             st.write("") # Spacer for vertical alignment
@@ -464,6 +487,28 @@ def display_aggregated_data(data_manager, watchlist_manager, risk_analyzer, hist
 
         if st.session_state.source_list_filter_agg != 'Toutes':
             filtered_df = filtered_df[filtered_df['source_list'] == st.session_state.source_list_filter_agg]
+
+        # Filtrer par date de mise à jour (aujourd'hui)
+        if st.session_state.updated_today_filter_agg:
+            if 'updated_at' in filtered_df.columns:
+                today = datetime.now().date()
+                # Convertir updated_at en datetime si c'est une chaîne
+                filtered_df['_temp_updated'] = pd.to_datetime(filtered_df['updated_at'], errors='coerce')
+                filtered_df = filtered_df[filtered_df['_temp_updated'].dt.date == today]
+                filtered_df = filtered_df.drop(columns=['_temp_updated'])
+            else:
+                st.warning("⚠️ La colonne 'updated_at' n'existe pas dans les données.")
+
+        # Filtrer par date de création (aujourd'hui)
+        if st.session_state.created_today_filter_agg:
+            if 'created_at' in filtered_df.columns:
+                today = datetime.now().date()
+                # Convertir created_at en datetime si c'est une chaîne
+                filtered_df['_temp_created'] = pd.to_datetime(filtered_df['created_at'], errors='coerce')
+                filtered_df = filtered_df[filtered_df['_temp_created'].dt.date == today]
+                filtered_df = filtered_df.drop(columns=['_temp_created'])
+            else:
+                st.warning("⚠️ La colonne 'created_at' n'existe pas dans les données.")
 
         st.subheader(f"Tableau Agrégé ({len(filtered_df)} substances)")
 
@@ -823,6 +868,7 @@ def display_trends(data_manager, history_manager):
 
         # Filtrer les données de l'historique
         filtered_hist_df = history_df.copy()
+
         if selected_list_hist != 'Toutes':
             if not filtered_hist_df.empty:
                 filtered_hist_df = filtered_hist_df[filtered_hist_df['source_list'] == selected_list_hist]
