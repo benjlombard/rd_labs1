@@ -72,6 +72,24 @@ class DataManager:
         df_renamed = df.rename(columns=rename_map)
         return df_renamed
 
+    def _clean_cas_id_column(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Nettoie et standardise la colonne 'cas_id'.
+        - Convertit en string
+        - Supprime les espaces
+        - Standardise les valeurs nulles
+        - Supprime les '.0' finaux
+        """
+        if 'cas_id' in df.columns:
+            self.logger.debug("Nettoyage de la colonne cas_id")
+            # Convertir en string, en gérant les erreurs et les valeurs nulles
+            df['cas_id'] = df['cas_id'].astype(str).str.strip()
+            # Remplacer les variantes de "null" par une valeur standard
+            df['cas_id'] = df['cas_id'].replace(['-', 'nan', '', 'None', None], pd.NA)
+            # Supprimer les '.0' qui peuvent apparaître si des nombres sont lus comme des floats
+            df['cas_id'] = df['cas_id'].str.replace(r'\.0$', '', regex=True)
+        return df
+
     def load_cas_source(self) -> pd.DataFrame:
         file_path = self.data_folder / "input" / self.config['source_files']['cas_source']
         df = pd.read_excel(file_path)
@@ -98,6 +116,9 @@ class DataManager:
         # Renommer les colonnes spécifiques à cette liste si configurées
         if list_name in self.config['columns']:
             df = self._rename_list_specific_columns(df, list_name)
+
+        # Nettoyer la colonne cas_id pour assurer la cohérence
+        df = self._clean_cas_id_column(df)
 
         # Créer un identifiant unique : ajouter un index de ligne pour les cas_id manquants/dupliqués
         if 'cas_id' in df.columns:
@@ -338,6 +359,9 @@ class DataManager:
             self.logger.debug(f"Chargement du fichier agrégé: {output_path}")
             df = pd.read_excel(output_path)
             self.logger.debug(f"Fichier chargé: {len(df)} lignes, {len(df.columns)} colonnes")
+
+            # Nettoyer la colonne cas_id pour assurer la cohérence avant toute manipulation
+            df = self._clean_cas_id_column(df)
 
             # Éliminer les doublons éventuels
             if not df.empty and 'cas_id' in df.columns and 'source_list' in df.columns:
