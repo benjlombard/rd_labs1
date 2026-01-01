@@ -406,15 +406,6 @@ def display_aggregated_data(data_manager, watchlist_manager, risk_analyzer, hist
 
         st.subheader("Filtres")
 
-        # Bouton Reset Filtres
-        col_reset1, col_reset2 = st.columns([6, 1])
-        with col_reset2:
-            if st.button("🔄 Reset Filtres"):
-                st.session_state.cas_name_filter_agg = ""
-                st.session_state.cas_id_filter_agg = ""
-                st.session_state.source_list_filter_agg = "Toutes"
-                st.rerun()
-
         # Initialiser session_state si nécessaire
         if 'cas_name_filter_agg' not in st.session_state:
             st.session_state.cas_name_filter_agg = ""
@@ -423,48 +414,53 @@ def display_aggregated_data(data_manager, watchlist_manager, risk_analyzer, hist
         if 'source_list_filter_agg' not in st.session_state:
             st.session_state.source_list_filter_agg = "Toutes"
 
-        col1, col2, col3 = st.columns(3)
+        # Créer une ligne pour les filtres et le bouton
+        col1, col2, col3, col_btn = st.columns([2, 2, 2, 1])
 
         with col1:
-            cas_name_filter = st.text_input(
+            st.text_input(
                 "Filtrer par nom de substance (cas_name)",
-                value=st.session_state.cas_name_filter_agg,
-                key="cas_name_input_agg"
+                key="cas_name_filter_agg"
             )
-            st.session_state.cas_name_filter_agg = cas_name_filter
 
         with col2:
-            cas_id_filter = st.text_input(
+            st.text_input(
                 "Filtrer par identifiant CAS (cas_id)",
-                value=st.session_state.cas_id_filter_agg,
-                key="cas_id_input_agg"
+                key="cas_id_filter_agg"
             )
-            st.session_state.cas_id_filter_agg = cas_id_filter
 
         with col3:
             source_lists = ['Toutes'] + sorted(list(aggregated_df['source_list'].unique()))
-            selected_source_list = st.selectbox(
+            st.selectbox(
                 "Filtrer par liste source",
                 source_lists,
-                index=source_lists.index(st.session_state.source_list_filter_agg) if st.session_state.source_list_filter_agg in source_lists else 0,
-                key="source_list_select_agg"
+                key="source_list_filter_agg"
             )
-            st.session_state.source_list_filter_agg = selected_source_list
+
+        with col_btn:
+            st.write("") # Spacer for vertical alignment
+            st.write("") # Spacer for vertical alignment
+            if st.button("🔄 Reset Filtres"):
+                st.session_state.cas_name_filter_agg = ""
+                st.session_state.cas_id_filter_agg = ""
+                st.session_state.source_list_filter_agg = "Toutes"
+                st.rerun()
 
         filtered_df = aggregated_df.copy()
 
-        if cas_name_filter:
+        # Utiliser directement st.session_state pour filtrer
+        if st.session_state.cas_name_filter_agg:
             filtered_df = filtered_df[
-                filtered_df['cas_name'].astype(str).str.contains(cas_name_filter, case=False, na=False)
+                filtered_df['cas_name'].astype(str).str.contains(st.session_state.cas_name_filter_agg, case=False, na=False)
             ]
 
-        if cas_id_filter:
+        if st.session_state.cas_id_filter_agg:
             filtered_df = filtered_df[
-                filtered_df['cas_id'].astype(str).str.contains(cas_id_filter, case=False, na=False)
+                filtered_df['cas_id'].astype(str).str.contains(st.session_state.cas_id_filter_agg, case=False, na=False)
             ]
 
-        if selected_source_list != 'Toutes':
-            filtered_df = filtered_df[filtered_df['source_list'] == selected_source_list]
+        if st.session_state.source_list_filter_agg != 'Toutes':
+            filtered_df = filtered_df[filtered_df['source_list'] == st.session_state.source_list_filter_agg]
 
         st.subheader(f"Tableau Agrégé ({len(filtered_df)} substances)")
 
