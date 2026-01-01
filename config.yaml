@@ -53,3 +53,5 @@ columns:
 output_files:
   aggregated_data: "data/aggregated_data.xlsx"
   change_history: "data/change_history.xlsx"
+  summary_history: "data/summary_history.xlsx"
+
