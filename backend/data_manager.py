@@ -337,7 +337,7 @@ class DataManager:
                 return False
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_excel(output_path, index=False)
+        df.to_excel(output_path, index=False, engine='openpyxl')
         self.logger.info(f"Fichier sauvegarde avec succes: {output_path}")
         return True
 
