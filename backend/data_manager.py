@@ -140,33 +140,69 @@ class DataManager:
         - created_at: date de première apparition (conservée si substance existante)
         - updated_at: date de dernière modification (mise à jour si données changées)
         """
-        self.logger.debug("Mise a jour des timestamps")
+        self.logger.info("Début de la mise à jour des timestamps")
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         # Charger l'ancien fichier agrégé s'il existe
         old_df = self.load_aggregated_data()
+        self.logger.info(f"Ancien DataFrame chargé: {len(old_df)} lignes")
 
         if old_df.empty:
             # Première agrégation: toutes les substances sont nouvelles
-            self.logger.debug("Premiere agregation: creation des timestamps pour toutes les lignes")
+            self.logger.info("Première agrégation: création des timestamps pour toutes les lignes")
             new_df['created_at'] = current_time
             new_df['updated_at'] = current_time
             return new_df
 
         # Créer une clé unique pour identifier les substances (cas_id + source_list)
+        self.logger.info(f"Nouveau DataFrame avant déduplication: {len(new_df)} lignes")
         new_df['_key'] = new_df['cas_id'].astype(str) + '|' + new_df['source_list'].astype(str)
+
+        # Vérifier les doublons AVANT déduplication
+        duplicates_before = new_df['_key'].duplicated().sum()
+        self.logger.info(f"Doublons détectés dans new_df AVANT déduplication: {duplicates_before}")
 
         # Éliminer les doublons de clé dans le nouveau DataFrame (garder la dernière occurrence)
         new_df = new_df.drop_duplicates(subset=['_key'], keep='last').reset_index(drop=True)
+        self.logger.info(f"Nouveau DataFrame après déduplication: {len(new_df)} lignes")
 
         if 'created_at' in old_df.columns and 'updated_at' in old_df.columns:
+            self.logger.info("Ancien DataFrame contient des timestamps")
             old_df['_key'] = old_df['cas_id'].astype(str) + '|' + old_df['source_list'].astype(str)
 
+            # Vérifier les doublons AVANT déduplication
+            duplicates_before_old = old_df['_key'].duplicated().sum()
+            self.logger.info(f"Doublons détectés dans old_df AVANT déduplication: {duplicates_before_old}")
+
             # Éliminer les doublons de clé (garder la dernière occurrence)
-            old_df_unique = old_df.drop_duplicates(subset=['_key'], keep='last')
+            old_df_unique = old_df.drop_duplicates(subset=['_key'], keep='last').reset_index(drop=True)
+            self.logger.info(f"Ancien DataFrame après déduplication: {len(old_df_unique)} lignes")
+
+            # Vérifier s'il reste des doublons
+            if old_df_unique['_key'].duplicated().any():
+                duplicates_remaining = old_df_unique['_key'].duplicated().sum()
+                self.logger.warning(f"Doublons ENCORE présents dans _key après drop_duplicates: {duplicates_remaining}")
+                # Afficher quelques exemples de doublons
+                duplicated_keys = old_df_unique[old_df_unique['_key'].duplicated(keep=False)]['_key'].unique()[:5]
+                self.logger.warning(f"Exemples de clés dupliquées: {list(duplicated_keys)}")
+                # Forcer une deuxième déduplication
+                old_df_unique = old_df_unique.drop_duplicates(subset=['_key'], keep='last').reset_index(drop=True)
+                self.logger.info(f"Après 2ème déduplication: {len(old_df_unique)} lignes")
 
             # Créer un dictionnaire des timestamps existants
-            old_timestamps = old_df_unique.set_index('_key')[['created_at', 'updated_at']].to_dict('index')
+            self.logger.info("Création du dictionnaire des timestamps")
+            try:
+                old_timestamps = old_df_unique.set_index('_key')[['created_at', 'updated_at']].to_dict('index')
+                self.logger.info(f"Dictionnaire créé avec succès: {len(old_timestamps)} entrées")
+            except ValueError as e:
+                self.logger.error(f"ERREUR lors de la création du dictionnaire: {str(e)}")
+                # Vérifier à nouveau les doublons
+                final_duplicates = old_df_unique['_key'].duplicated().sum()
+                self.logger.error(f"Doublons FINAUX dans old_df_unique: {final_duplicates}")
+                if final_duplicates > 0:
+                    duplicated_rows = old_df_unique[old_df_unique['_key'].duplicated(keep=False)]
+                    self.logger.error(f"Lignes dupliquées:\n{duplicated_rows[['cas_id', 'source_list', '_key']].to_string()}")
+                raise
 
             # Pour chaque ligne du nouveau DataFrame
             created_at_list = []
@@ -251,13 +287,39 @@ class DataManager:
     def load_aggregated_data(self) -> pd.DataFrame:
         output_path = Path(self.config['output_files']['aggregated_data'])
         if output_path.exists():
+            self.logger.debug(f"Chargement du fichier agrégé: {output_path}")
             df = pd.read_excel(output_path)
+            self.logger.debug(f"Fichier chargé: {len(df)} lignes, {len(df.columns)} colonnes")
+
             # Éliminer les doublons éventuels basés sur cas_id + source_list
             if not df.empty and 'cas_id' in df.columns and 'source_list' in df.columns:
+                # Compter les doublons AVANT déduplication
                 df['_key'] = df['cas_id'].astype(str) + '|' + df['source_list'].astype(str)
+                duplicates_before = df['_key'].duplicated().sum()
+
+                if duplicates_before > 0:
+                    self.logger.warning(f"ATTENTION: {duplicates_before} doublons détectés dans le fichier agrégé !")
+                    # Afficher quelques exemples
+                    duplicated_keys = df[df['_key'].duplicated(keep=False)]['_key'].value_counts().head(5)
+                    self.logger.warning(f"Exemples de clés dupliquées:\n{duplicated_keys}")
+
+                # Déduplication
                 df = df.drop_duplicates(subset=['_key'], keep='last').reset_index(drop=True)
+                duplicates_after = df['_key'].duplicated().sum()
+
+                self.logger.debug(f"Après déduplication: {len(df)} lignes, {duplicates_after} doublons restants")
+
+                if duplicates_after > 0:
+                    self.logger.error(f"ERREUR: {duplicates_after} doublons PERSISTENT après drop_duplicates!")
+                    # Forcer une seconde déduplication
+                    df = df.drop_duplicates(subset=['_key'], keep='last').reset_index(drop=True)
+                    self.logger.debug(f"Après 2ème déduplication: {len(df)} lignes")
+
                 df = df.drop(columns=['_key'])
+
             return df
+
+        self.logger.debug("Aucun fichier agrégé existant")
         return pd.DataFrame()
 
     def get_list_description(self, list_name: str) -> str:

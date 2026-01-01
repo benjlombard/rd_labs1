@@ -594,22 +594,45 @@ def display_update_section(data_manager, change_detector, history_manager, watch
     st.info("Cette section permet de charger les nouvelles données et de détecter les changements.")
 
     if st.button("Charger et Agréger les Données", type="primary"):
+        logger.info("=" * 80)
+        logger.info("DÉBUT DU PROCESSUS DE CHARGEMENT ET AGRÉGATION")
+        logger.info("=" * 80)
+
         with st.spinner("Archivage des fichiers sources..."):
             try:
+                logger.info("ÉTAPE 1: Archivage des fichiers sources")
                 # Archiver les fichiers sources avant le chargement
                 archived_count = data_manager.archive_source_files()
                 if archived_count > 0:
                     st.info(f"📦 {archived_count} fichiers archivés dans data/archives/")
+                    logger.info(f"Archivage réussi: {archived_count} fichiers archivés")
+                else:
+                    logger.info("Aucun fichier à archiver")
 
             except Exception as e:
+                logger.error(f"Erreur lors de l'archivage: {str(e)}", exc_info=True)
                 st.warning(f"Avertissement lors de l'archivage: {str(e)}")
 
         with st.spinner("Chargement des données en cours..."):
             try:
+                logger.info("ÉTAPE 2: Chargement de l'ancien fichier agrégé")
                 old_aggregated = data_manager.load_aggregated_data()
+                logger.info(f"Ancien fichier agrégé chargé: {len(old_aggregated)} enregistrements")
+                if not old_aggregated.empty:
+                    logger.info(f"Colonnes: {list(old_aggregated.columns)}")
+                    if 'cas_id' in old_aggregated.columns and 'source_list' in old_aggregated.columns:
+                        old_aggregated['_check_key'] = old_aggregated['cas_id'].astype(str) + '|' + old_aggregated['source_list'].astype(str)
+                        duplicates = old_aggregated['_check_key'].duplicated().sum()
+                        logger.info(f"Doublons détectés dans l'ancien fichier: {duplicates}")
+                        old_aggregated = old_aggregated.drop(columns=['_check_key'])
 
+                logger.info("ÉTAPE 3: Agrégation des nouvelles données")
                 aggregated_df = data_manager.aggregate_all_data()
+                logger.info(f"Nouvelles données agrégées: {len(aggregated_df)} enregistrements")
+
+                logger.info("ÉTAPE 4: Sauvegarde du fichier agrégé")
                 was_saved = data_manager.save_aggregated_data(aggregated_df)
+                logger.info(f"Résultat de la sauvegarde: was_saved={was_saved}")
 
                 # Créer des placeholders pour les messages temporaires
                 message_placeholder1 = st.empty()
@@ -622,24 +645,37 @@ def display_update_section(data_manager, change_detector, history_manager, watch
 
                 if not old_aggregated.empty:
                     with st.spinner("Détection des changements..."):
+                        logger.info("ÉTAPE 5: Détection des changements")
                         old_lists = {}
                         new_lists = data_manager.load_all_lists()
+                        logger.info(f"Listes chargées: {list(new_lists.keys())}")
 
                         for list_name in new_lists.keys():
+                            logger.info(f"Traitement de la liste: {list_name}")
                             old_list_data = old_aggregated[old_aggregated['source_list'] == list_name]
+                            logger.info(f"  - Anciennes données pour {list_name}: {len(old_list_data)} enregistrements")
+                            logger.info(f"  - Nouvelles données pour {list_name}: {len(new_lists[list_name])} enregistrements")
+
                             if not old_list_data.empty:
                                 # Exclure les colonnes de timestamp lors de la comparaison
                                 cols_to_drop = ['source_list', 'created_at', 'updated_at']
                                 old_list_data = old_list_data.drop(columns=[col for col in cols_to_drop if col in old_list_data.columns])
+                                logger.info(f"  - Colonnes après suppression timestamps: {len(old_list_data.columns)}")
 
                                 # Éliminer les doublons de cas_id (garder la dernière occurrence)
                                 if 'cas_id' in old_list_data.columns:
+                                    before_dedup = len(old_list_data)
                                     old_list_data = old_list_data.drop_duplicates(subset=['cas_id'], keep='last').reset_index(drop=True)
+                                    after_dedup = len(old_list_data)
+                                    logger.info(f"  - Déduplication anciennes données: {before_dedup} -> {after_dedup} ({before_dedup - after_dedup} doublons supprimés)")
 
                                 common_cols = [col for col in new_lists[list_name].columns if col in old_list_data.columns]
+                                logger.info(f"  - Colonnes communes pour comparaison: {len(common_cols)} colonnes")
                                 old_lists[list_name] = old_list_data[common_cols]
 
+                        logger.info("ÉTAPE 6: Détection des changements pour toutes les listes")
                         changes_df = change_detector.detect_all_changes(old_lists, new_lists)
+                        logger.info(f"Changements détectés: {len(changes_df)} enregistrements")
 
                         # Créer le tableau récapitulatif par liste source
                         st.subheader("📋 Récapitulatif des Changements par Liste")
@@ -685,9 +721,12 @@ def display_update_section(data_manager, change_detector, history_manager, watch
                         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
                         if not changes_df.empty:
+                            logger.info("ÉTAPE 7: Sauvegarde des changements dans l'historique")
                             history_manager.save_changes(changes_df)
+                            logger.info(f"Historique mis à jour avec {len(changes_df)} changements")
 
                             # Créer les alertes pour les substances watchlistées
+                            logger.info("ÉTAPE 8: Création des alertes")
                             alert_system.create_alerts_from_changes(
                                 changes_df,
                                 watchlist_manager,
@@ -695,13 +734,19 @@ def display_update_section(data_manager, change_detector, history_manager, watch
                                 aggregated_df,
                                 history_manager.load_history()
                             )
+                            logger.info("Alertes créées avec succès")
 
                             message_placeholder2.success(f"{len(changes_df)} changements détectés et enregistrés!")
 
                             st.subheader("Aperçu des Changements")
                             st.dataframe(changes_df.head(10), use_container_width=True)
                         else:
+                            logger.info("Aucun changement détecté")
                             message_placeholder2.info("Aucun changement détecté.")
+
+                logger.info("=" * 80)
+                logger.info("FIN DU PROCESSUS DE CHARGEMENT ET AGRÉGATION - SUCCÈS")
+                logger.info("=" * 80)
 
                 # Faire disparaître les messages après 5 secondes
                 time.sleep(5)
@@ -709,6 +754,11 @@ def display_update_section(data_manager, change_detector, history_manager, watch
                 message_placeholder2.empty()
 
             except Exception as e:
+                logger.error("=" * 80)
+                logger.error("FIN DU PROCESSUS DE CHARGEMENT ET AGRÉGATION - ERREUR")
+                logger.error(f"Exception: {str(e)}")
+                logger.error("=" * 80)
+                logger.exception("Traceback complet:")
                 st.error(f"Erreur lors de la mise à jour: {str(e)}")
                 st.exception(e)
 
