@@ -151,11 +151,17 @@ class DataManager:
         # Créer une clé unique pour identifier les substances (cas_id + source_list)
         new_df['_key'] = new_df['cas_id'].astype(str) + '|' + new_df['source_list'].astype(str)
 
+        # Éliminer les doublons de clé dans le nouveau DataFrame (garder la dernière occurrence)
+        new_df = new_df.drop_duplicates(subset=['_key'], keep='last').reset_index(drop=True)
+
         if 'created_at' in old_df.columns and 'updated_at' in old_df.columns:
             old_df['_key'] = old_df['cas_id'].astype(str) + '|' + old_df['source_list'].astype(str)
 
+            # Éliminer les doublons de clé (garder la dernière occurrence)
+            old_df_unique = old_df.drop_duplicates(subset=['_key'], keep='last')
+
             # Créer un dictionnaire des timestamps existants
-            old_timestamps = old_df.set_index('_key')[['created_at', 'updated_at']].to_dict('index')
+            old_timestamps = old_df_unique.set_index('_key')[['created_at', 'updated_at']].to_dict('index')
 
             # Pour chaque ligne du nouveau DataFrame
             created_at_list = []

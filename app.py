@@ -625,12 +625,22 @@ def display_update_section(data_manager, change_detector, history_manager, watch
                         old_lists = {}
                         new_lists = data_manager.load_all_lists()
 
+                        # Déduplicater les nouvelles listes par cas_id
+                        for list_name in new_lists.keys():
+                            if 'cas_id' in new_lists[list_name].columns:
+                                new_lists[list_name] = new_lists[list_name].drop_duplicates(subset=['cas_id'], keep='last').reset_index(drop=True)
+
                         for list_name in new_lists.keys():
                             old_list_data = old_aggregated[old_aggregated['source_list'] == list_name]
                             if not old_list_data.empty:
                                 # Exclure les colonnes de timestamp lors de la comparaison
                                 cols_to_drop = ['source_list', 'created_at', 'updated_at']
                                 old_list_data = old_list_data.drop(columns=[col for col in cols_to_drop if col in old_list_data.columns])
+
+                                # Éliminer les doublons de cas_id (garder la dernière occurrence)
+                                if 'cas_id' in old_list_data.columns:
+                                    old_list_data = old_list_data.drop_duplicates(subset=['cas_id'], keep='last').reset_index(drop=True)
+
                                 common_cols = [col for col in new_lists[list_name].columns if col in old_list_data.columns]
                                 old_lists[list_name] = old_list_data[common_cols]
 

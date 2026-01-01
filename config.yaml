@@ -27,10 +27,8 @@ columns:
 
   # Colonnes spécifiques à authorisation_list_full-2025-09-13.xlsx
   authorisation_list:
-    substance_name: "Substance name"
     description: "Description"
     ec_number: "EC number"
-    cas_number: "CAS number"
     entry_number: "Entry number"
     latest_application_date: "Latest application date"
     latest_application_date_remarks: "Latest application date remarks"
@@ -44,10 +42,8 @@ columns:
 
   # Colonnes spécifiques à restriction_list_full-2025-09-12.xlsx
   restriction_list:
-    substance_name: "Substance name"
     description: "Description"
     ec_number: "EC number"
-    cas_number: "CAS number"
     entry_number: "Entry number"
     conditions: "Conditions"
     regulatory_outcome: "Regulatory outcome"
