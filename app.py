@@ -687,7 +687,13 @@ def display_update_section(data_manager, change_detector, history_manager, watch
                         })
 
                     summary_df = pd.DataFrame(summary_data)
-                    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+                    
+                    # Sauvegarder le résumé actuel dans l'historique
+                    history_manager.save_summary(summary_df)
+                    
+                    # Charger et afficher l'historique complet des résumés
+                    summary_history_df = history_manager.load_summary_history()
+                    st.dataframe(summary_history_df, use_container_width=True, hide_index=True)
 
                     # Afficher les métriques de résumé
                     st.subheader("📊 Résumé de la Mise à Jour")
