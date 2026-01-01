@@ -20,9 +20,65 @@ class DataManager:
         with open(config_path, 'r', encoding='utf-8') as f:
             return yaml.safe_load(f)
 
+    def _rename_common_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Renomme les colonnes communes selon le mapping défini dans config.yaml
+
+        Args:
+            df: DataFrame avec les noms de colonnes originaux des fichiers Excel
+
+        Returns:
+            DataFrame avec les noms de colonnes normalisés (cas_id, cas_name, etc.)
+        """
+        if 'common' not in self.config['columns']:
+            self.logger.warning("Aucune colonne commune definie dans config.yaml")
+            return df
+
+        # Créer un dictionnaire de renommage inversé
+        # config: cas_id: "CAS number" → rename_map: "CAS number": "cas_id"
+        rename_map = {}
+        for normalized_name, excel_name in self.config['columns']['common'].items():
+            if excel_name in df.columns:
+                rename_map[excel_name] = normalized_name
+                self.logger.debug(f"Renommage colonne: '{excel_name}' -> '{normalized_name}'")
+            else:
+                self.logger.warning(f"Colonne '{excel_name}' non trouvee dans le fichier (attendue pour '{normalized_name}')")
+
+        df_renamed = df.rename(columns=rename_map)
+        return df_renamed
+
+    def _rename_list_specific_columns(self, df: pd.DataFrame, list_name: str) -> pd.DataFrame:
+        """
+        Renomme les colonnes spécifiques à une liste selon le mapping défini dans config.yaml
+
+        Args:
+            df: DataFrame avec les noms de colonnes partiellement normalisés
+            list_name: Nom de la liste (ex: "authorisation_list")
+
+        Returns:
+            DataFrame avec toutes les colonnes normalisées
+        """
+        if list_name not in self.config['columns']:
+            self.logger.debug(f"Aucune colonne specifique definie pour la liste {list_name}")
+            return df
+
+        # Créer un dictionnaire de renommage inversé pour cette liste
+        rename_map = {}
+        for normalized_name, excel_name in self.config['columns'][list_name].items():
+            if excel_name in df.columns:
+                rename_map[excel_name] = normalized_name
+                self.logger.debug(f"Renommage colonne specifique {list_name}: '{excel_name}' -> '{normalized_name}'")
+
+        df_renamed = df.rename(columns=rename_map)
+        return df_renamed
+
     def load_cas_source(self) -> pd.DataFrame:
         file_path = self.data_folder / "input" / self.config['source_files']['cas_source']
         df = pd.read_excel(file_path)
+
+        # Renommer les colonnes communes selon la configuration
+        df = self._rename_common_columns(df)
+
         return df
 
     def load_list_file(self, list_name: str) -> pd.DataFrame:
@@ -35,6 +91,14 @@ class DataManager:
         file_path = self.data_folder / "input" / list_config['file']
         self.logger.debug(f"Lecture du fichier: {file_path}")
         df = pd.read_excel(file_path)
+
+        # Renommer les colonnes communes selon la configuration
+        df = self._rename_common_columns(df)
+
+        # Renommer les colonnes spécifiques à cette liste si configurées
+        if list_name in self.config['columns']:
+            df = self._rename_list_specific_columns(df, list_name)
+
         df['source_list'] = list_name
         self.logger.info(f"Liste {list_name} chargee avec succes: {len(df)} enregistrements")
         return df
