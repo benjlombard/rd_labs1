@@ -720,6 +720,20 @@ def display_update_section(data_manager, change_detector, history_manager, watch
                         summary_df = pd.DataFrame(summary_data)
                         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
+                        # Afficher les métriques de résumé
+                        st.subheader("📊 Résumé de la Mise à Jour")
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        total_substances = len(aggregated_df)
+                        insertions = len(changes_df[changes_df['change_type'] == 'insertion']) if not changes_df.empty else 0
+                        deletions = len(changes_df[changes_df['change_type'] == 'deletion']) if not changes_df.empty else 0
+                        modifications = len(changes_df[changes_df['change_type'] == 'modification']) if not changes_df.empty else 0
+
+                        col1.metric("Substances Traitées", total_substances)
+                        col2.metric("✅ Insertions", insertions)
+                        col3.metric("❌ Suppressions", deletions)
+                        col4.metric("✏️ Modifications", modifications)
+
                         if not changes_df.empty:
                             logger.info("ÉTAPE 7: Sauvegarde des changements dans l'historique")
                             history_manager.save_changes(changes_df)
