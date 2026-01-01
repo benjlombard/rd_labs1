@@ -99,6 +99,11 @@ class DataManager:
         if list_name in self.config['columns']:
             df = self._rename_list_specific_columns(df, list_name)
 
+        # Déduplicater par cas_id (garder la dernière occurrence)
+        if 'cas_id' in df.columns:
+            df = df.drop_duplicates(subset=['cas_id'], keep='last').reset_index(drop=True)
+            self.logger.debug(f"Deduplication effectuee pour {list_name}")
+
         # Ne pas ajouter source_list ici, ce sera fait dans aggregate_all_data()
         self.logger.info(f"Liste {list_name} chargee avec succes: {len(df)} enregistrements")
         return df

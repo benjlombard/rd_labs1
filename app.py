@@ -625,11 +625,6 @@ def display_update_section(data_manager, change_detector, history_manager, watch
                         old_lists = {}
                         new_lists = data_manager.load_all_lists()
 
-                        # Déduplicater les nouvelles listes par cas_id
-                        for list_name in new_lists.keys():
-                            if 'cas_id' in new_lists[list_name].columns:
-                                new_lists[list_name] = new_lists[list_name].drop_duplicates(subset=['cas_id'], keep='last').reset_index(drop=True)
-
                         for list_name in new_lists.keys():
                             old_list_data = old_aggregated[old_aggregated['source_list'] == list_name]
                             if not old_list_data.empty:
