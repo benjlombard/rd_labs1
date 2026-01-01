@@ -99,10 +99,33 @@ class DataManager:
         if list_name in self.config['columns']:
             df = self._rename_list_specific_columns(df, list_name)
 
-        # Déduplicater par cas_id (garder la dernière occurrence)
+        # Créer un identifiant unique : ajouter un index de ligne pour les cas_id manquants/dupliqués
         if 'cas_id' in df.columns:
-            df = df.drop_duplicates(subset=['cas_id'], keep='last').reset_index(drop=True)
-            self.logger.debug(f"Deduplication effectuee pour {list_name}")
+            # Compter les doublons et valeurs manquantes AVANT traitement
+            total_rows = len(df)
+            missing_cas = df['cas_id'].isna().sum() + (df['cas_id'] == '-').sum()
+            duplicated_cas = df['cas_id'].duplicated().sum()
+
+            self.logger.debug(f"Liste {list_name} - Lignes: {total_rows}, CAS manquants/'-': {missing_cas}, Doublons CAS: {duplicated_cas}")
+
+            # Créer un identifiant unique combinant cas_id + index de ligne pour les cas problématiques
+            df['_row_id'] = range(len(df))
+            df['unique_id'] = df.apply(
+                lambda row: f"{row['cas_id']}_{row['_row_id']}" if pd.isna(row['cas_id']) or row['cas_id'] == '-' or row['cas_id'] == ''
+                else str(row['cas_id']),
+                axis=1
+            )
+
+            # Déduplicater par unique_id (pour éliminer les vrais doublons)
+            before_dedup = len(df)
+            df = df.drop_duplicates(subset=['unique_id'], keep='last').reset_index(drop=True)
+            after_dedup = len(df)
+
+            if before_dedup != after_dedup:
+                self.logger.info(f"Déduplication {list_name}: {before_dedup} -> {after_dedup} ({before_dedup - after_dedup} doublons supprimés)")
+
+            # Supprimer les colonnes temporaires
+            df = df.drop(columns=['_row_id', 'unique_id'])
 
         # Ne pas ajouter source_list ici, ce sera fait dans aggregate_all_data()
         self.logger.info(f"Liste {list_name} chargee avec succes: {len(df)} enregistrements")
@@ -126,10 +149,23 @@ class DataManager:
             aggregated_frames.append(df_copy)
             self.logger.debug(f"Liste {list_name} ajoutee: {len(df_copy)} lignes")
 
-        aggregated_df = pd.concat(aggregated_frames, ignore_index=True)
+        aggregated_df = pd.concat(aggregated_frames, ignore_index=True).reset_index(drop=True)
+
+        # Créer un identifiant unique permanent pour chaque substance
+        # Pour les cas_id manquants ou "-", on utilise l'index global
+        aggregated_df['_global_id'] = range(len(aggregated_df))
+        aggregated_df['unique_substance_id'] = aggregated_df.apply(
+            lambda row: f"{row['cas_id']}|{row['source_list']}"
+                if pd.notna(row['cas_id']) and row['cas_id'] != '-' and row['cas_id'] != ''
+                else f"NOCASE_{row['_global_id']}|{row['source_list']}",
+            axis=1
+        )
 
         # Ajouter ou mettre à jour les timestamps
         aggregated_df = self._update_timestamps(aggregated_df)
+
+        # Supprimer la colonne temporaire _global_id
+        aggregated_df = aggregated_df.drop(columns=['_global_id'])
 
         self.logger.info(f"Agregation terminee: {len(aggregated_df)} enregistrements au total")
         return aggregated_df
@@ -154,54 +190,69 @@ class DataManager:
             new_df['updated_at'] = current_time
             return new_df
 
-        # Créer une clé unique pour identifier les substances (cas_id + source_list)
+        # Utiliser unique_substance_id qui a été créé dans aggregate_all_data()
         self.logger.info(f"Nouveau DataFrame avant déduplication: {len(new_df)} lignes")
-        new_df['_key'] = new_df['cas_id'].astype(str) + '|' + new_df['source_list'].astype(str)
+
+        if 'unique_substance_id' not in new_df.columns:
+            self.logger.error("ERREUR: unique_substance_id manquant dans new_df!")
+            return new_df
 
         # Vérifier les doublons AVANT déduplication
-        duplicates_before = new_df['_key'].duplicated().sum()
+        duplicates_before = new_df['unique_substance_id'].duplicated().sum()
         self.logger.info(f"Doublons détectés dans new_df AVANT déduplication: {duplicates_before}")
 
-        # Éliminer les doublons de clé dans le nouveau DataFrame (garder la dernière occurrence)
-        new_df = new_df.drop_duplicates(subset=['_key'], keep='last').reset_index(drop=True)
+        # Éliminer les doublons (garder la dernière occurrence)
+        new_df = new_df.drop_duplicates(subset=['unique_substance_id'], keep='last').reset_index(drop=True)
         self.logger.info(f"Nouveau DataFrame après déduplication: {len(new_df)} lignes")
 
         if 'created_at' in old_df.columns and 'updated_at' in old_df.columns:
             self.logger.info("Ancien DataFrame contient des timestamps")
-            old_df['_key'] = old_df['cas_id'].astype(str) + '|' + old_df['source_list'].astype(str)
+
+            # Vérifier si old_df a unique_substance_id
+            if 'unique_substance_id' not in old_df.columns:
+                self.logger.warning("unique_substance_id manquant dans old_df, reconstruction...")
+                # Reconstruire l'identifiant pour compatibilité avec anciens fichiers
+                old_df['_temp_id'] = range(len(old_df))
+                old_df['unique_substance_id'] = old_df.apply(
+                    lambda row: f"{row['cas_id']}|{row['source_list']}"
+                        if pd.notna(row['cas_id']) and row['cas_id'] != '-' and row['cas_id'] != ''
+                        else f"NOCASE_{row['_temp_id']}|{row['source_list']}",
+                    axis=1
+                )
+                old_df = old_df.drop(columns=['_temp_id'])
 
             # Vérifier les doublons AVANT déduplication
-            duplicates_before_old = old_df['_key'].duplicated().sum()
+            duplicates_before_old = old_df['unique_substance_id'].duplicated().sum()
             self.logger.info(f"Doublons détectés dans old_df AVANT déduplication: {duplicates_before_old}")
 
-            # Éliminer les doublons de clé (garder la dernière occurrence)
-            old_df_unique = old_df.drop_duplicates(subset=['_key'], keep='last').reset_index(drop=True)
+            # Éliminer les doublons
+            old_df_unique = old_df.drop_duplicates(subset=['unique_substance_id'], keep='last').reset_index(drop=True)
             self.logger.info(f"Ancien DataFrame après déduplication: {len(old_df_unique)} lignes")
 
             # Vérifier s'il reste des doublons
-            if old_df_unique['_key'].duplicated().any():
-                duplicates_remaining = old_df_unique['_key'].duplicated().sum()
-                self.logger.warning(f"Doublons ENCORE présents dans _key après drop_duplicates: {duplicates_remaining}")
-                # Afficher quelques exemples de doublons
-                duplicated_keys = old_df_unique[old_df_unique['_key'].duplicated(keep=False)]['_key'].unique()[:5]
-                self.logger.warning(f"Exemples de clés dupliquées: {list(duplicated_keys)}")
+            if old_df_unique['unique_substance_id'].duplicated().any():
+                duplicates_remaining = old_df_unique['unique_substance_id'].duplicated().sum()
+                self.logger.warning(f"Doublons ENCORE présents après drop_duplicates: {duplicates_remaining}")
+                # Afficher quelques exemples
+                duplicated_ids = old_df_unique[old_df_unique['unique_substance_id'].duplicated(keep=False)]['unique_substance_id'].unique()[:5]
+                self.logger.warning(f"Exemples de IDs dupliqués: {list(duplicated_ids)}")
                 # Forcer une deuxième déduplication
-                old_df_unique = old_df_unique.drop_duplicates(subset=['_key'], keep='last').reset_index(drop=True)
+                old_df_unique = old_df_unique.drop_duplicates(subset=['unique_substance_id'], keep='last').reset_index(drop=True)
                 self.logger.info(f"Après 2ème déduplication: {len(old_df_unique)} lignes")
 
             # Créer un dictionnaire des timestamps existants
             self.logger.info("Création du dictionnaire des timestamps")
             try:
-                old_timestamps = old_df_unique.set_index('_key')[['created_at', 'updated_at']].to_dict('index')
+                old_timestamps = old_df_unique.set_index('unique_substance_id')[['created_at', 'updated_at']].to_dict('index')
                 self.logger.info(f"Dictionnaire créé avec succès: {len(old_timestamps)} entrées")
             except ValueError as e:
                 self.logger.error(f"ERREUR lors de la création du dictionnaire: {str(e)}")
                 # Vérifier à nouveau les doublons
-                final_duplicates = old_df_unique['_key'].duplicated().sum()
+                final_duplicates = old_df_unique['unique_substance_id'].duplicated().sum()
                 self.logger.error(f"Doublons FINAUX dans old_df_unique: {final_duplicates}")
                 if final_duplicates > 0:
-                    duplicated_rows = old_df_unique[old_df_unique['_key'].duplicated(keep=False)]
-                    self.logger.error(f"Lignes dupliquées:\n{duplicated_rows[['cas_id', 'source_list', '_key']].to_string()}")
+                    duplicated_rows = old_df_unique[old_df_unique['unique_substance_id'].duplicated(keep=False)]
+                    self.logger.error(f"Lignes dupliquées:\n{duplicated_rows[['cas_id', 'source_list', 'unique_substance_id']].to_string()}")
                 raise
 
             # Pour chaque ligne du nouveau DataFrame
@@ -209,17 +260,17 @@ class DataManager:
             updated_at_list = []
 
             for idx, row in new_df.iterrows():
-                key = row['_key']
-                if key in old_timestamps:
+                uid = row['unique_substance_id']
+                if uid in old_timestamps:
                     # Substance existante: conserver created_at, vérifier si mise à jour nécessaire
-                    created_at_list.append(old_timestamps[key]['created_at'])
+                    created_at_list.append(old_timestamps[uid]['created_at'])
 
                     # Comparer les données (sans les colonnes de métadonnées)
-                    old_row = old_df_unique[old_df_unique['_key'] == key].iloc[0]
+                    old_row = old_df_unique[old_df_unique['unique_substance_id'] == uid].iloc[0]
 
-                    # Colonnes à comparer (exclure _key, created_at, updated_at, source_list)
+                    # Colonnes à comparer (exclure unique_substance_id, created_at, updated_at, source_list)
                     cols_to_compare = [col for col in new_df.columns
-                                      if col not in ['_key', 'created_at', 'updated_at', 'source_list']]
+                                      if col not in ['unique_substance_id', 'created_at', 'updated_at', 'source_list']]
 
                     data_changed = False
                     for col in cols_to_compare:
@@ -236,7 +287,7 @@ class DataManager:
                     if data_changed:
                         updated_at_list.append(current_time)
                     else:
-                        updated_at_list.append(old_timestamps[key]['updated_at'])
+                        updated_at_list.append(old_timestamps[uid]['updated_at'])
                 else:
                     # Nouvelle substance
                     created_at_list.append(current_time)
@@ -249,9 +300,6 @@ class DataManager:
             self.logger.debug("Ancien fichier sans timestamps: creation pour toutes les lignes")
             new_df['created_at'] = current_time
             new_df['updated_at'] = current_time
-
-        # Supprimer la colonne temporaire _key
-        new_df = new_df.drop(columns=['_key'])
 
         self.logger.debug(f"Timestamps mis a jour: {len(new_df)} lignes")
         return new_df
@@ -291,31 +339,41 @@ class DataManager:
             df = pd.read_excel(output_path)
             self.logger.debug(f"Fichier chargé: {len(df)} lignes, {len(df.columns)} colonnes")
 
-            # Éliminer les doublons éventuels basés sur cas_id + source_list
+            # Éliminer les doublons éventuels
             if not df.empty and 'cas_id' in df.columns and 'source_list' in df.columns:
+                # Vérifier si unique_substance_id existe déjà
+                if 'unique_substance_id' not in df.columns:
+                    self.logger.warning("unique_substance_id manquant, reconstruction pour compatibilité...")
+                    # Reconstruire pour compatibilité avec anciens fichiers
+                    df['_temp_id'] = range(len(df))
+                    df['unique_substance_id'] = df.apply(
+                        lambda row: f"{row['cas_id']}|{row['source_list']}"
+                            if pd.notna(row['cas_id']) and row['cas_id'] != '-' and row['cas_id'] != ''
+                            else f"NOCASE_{row['_temp_id']}|{row['source_list']}",
+                        axis=1
+                    )
+                    df = df.drop(columns=['_temp_id'])
+
                 # Compter les doublons AVANT déduplication
-                df['_key'] = df['cas_id'].astype(str) + '|' + df['source_list'].astype(str)
-                duplicates_before = df['_key'].duplicated().sum()
+                duplicates_before = df['unique_substance_id'].duplicated().sum()
 
                 if duplicates_before > 0:
                     self.logger.warning(f"ATTENTION: {duplicates_before} doublons détectés dans le fichier agrégé !")
                     # Afficher quelques exemples
-                    duplicated_keys = df[df['_key'].duplicated(keep=False)]['_key'].value_counts().head(5)
-                    self.logger.warning(f"Exemples de clés dupliquées:\n{duplicated_keys}")
+                    duplicated_ids = df[df['unique_substance_id'].duplicated(keep=False)]['unique_substance_id'].value_counts().head(5)
+                    self.logger.warning(f"Exemples d'IDs dupliqués:\n{duplicated_ids}")
 
                 # Déduplication
-                df = df.drop_duplicates(subset=['_key'], keep='last').reset_index(drop=True)
-                duplicates_after = df['_key'].duplicated().sum()
+                df = df.drop_duplicates(subset=['unique_substance_id'], keep='last').reset_index(drop=True)
+                duplicates_after = df['unique_substance_id'].duplicated().sum()
 
                 self.logger.debug(f"Après déduplication: {len(df)} lignes, {duplicates_after} doublons restants")
 
                 if duplicates_after > 0:
                     self.logger.error(f"ERREUR: {duplicates_after} doublons PERSISTENT après drop_duplicates!")
                     # Forcer une seconde déduplication
-                    df = df.drop_duplicates(subset=['_key'], keep='last').reset_index(drop=True)
+                    df = df.drop_duplicates(subset=['unique_substance_id'], keep='last').reset_index(drop=True)
                     self.logger.debug(f"Après 2ème déduplication: {len(df)} lignes")
-
-                df = df.drop(columns=['_key'])
 
             return df
 

@@ -620,11 +620,11 @@ def display_update_section(data_manager, change_detector, history_manager, watch
                 logger.info(f"Ancien fichier agrégé chargé: {len(old_aggregated)} enregistrements")
                 if not old_aggregated.empty:
                     logger.info(f"Colonnes: {list(old_aggregated.columns)}")
-                    if 'cas_id' in old_aggregated.columns and 'source_list' in old_aggregated.columns:
-                        old_aggregated['_check_key'] = old_aggregated['cas_id'].astype(str) + '|' + old_aggregated['source_list'].astype(str)
-                        duplicates = old_aggregated['_check_key'].duplicated().sum()
-                        logger.info(f"Doublons détectés dans l'ancien fichier: {duplicates}")
-                        old_aggregated = old_aggregated.drop(columns=['_check_key'])
+                    if 'unique_substance_id' in old_aggregated.columns:
+                        duplicates = old_aggregated['unique_substance_id'].duplicated().sum()
+                        logger.info(f"Doublons détectés dans l'ancien fichier (via unique_substance_id): {duplicates}")
+                    else:
+                        logger.warning("unique_substance_id manquant dans l'ancien fichier")
 
                 logger.info("ÉTAPE 3: Agrégation des nouvelles données")
                 aggregated_df = data_manager.aggregate_all_data()
