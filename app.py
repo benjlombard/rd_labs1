@@ -634,14 +634,10 @@ def display_update_section(data_manager, change_detector, history_manager, watch
                 was_saved = data_manager.save_aggregated_data(aggregated_df)
                 logger.info(f"Résultat de la sauvegarde: was_saved={was_saved}")
 
-                # Créer des placeholders pour les messages temporaires
-                message_placeholder1 = st.empty()
-                message_placeholder2 = st.empty()
-
                 if was_saved:
-                    message_placeholder1.success(f"Données agrégées et sauvegardées avec succès! {len(aggregated_df)} enregistrements chargés.")
+                    st.success(f"Données agrégées et sauvegardées avec succès! {len(aggregated_df)} enregistrements chargés.")
                 else:
-                    message_placeholder1.info(f"Données agrégées ({len(aggregated_df)} enregistrements). Aucun changement détecté, fichier non modifié.")
+                    st.info(f"Données agrégées ({len(aggregated_df)} enregistrements). Aucun changement détecté, fichier non modifié.")
 
                 # La détection des changements est maintenant exécutée de manière inconditionnelle.
                 # Lors du premier chargement, old_aggregated est vide, et le ChangeDetector
@@ -687,7 +683,13 @@ def display_update_section(data_manager, change_detector, history_manager, watch
                         })
 
                     summary_df = pd.DataFrame(summary_data)
-                    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+                    # Sauvegarder le résumé actuel dans l'historique
+                    history_manager.save_summary(summary_df)
+
+                    # Charger et afficher l'historique complet des résumés
+                    summary_history_df = history_manager.load_summary_history()
+                    st.dataframe(summary_history_df, use_container_width=True, hide_index=True)
 
                     # Afficher les métriques de résumé
                     st.subheader("📊 Résumé de la Mise à Jour")
@@ -723,22 +725,17 @@ def display_update_section(data_manager, change_detector, history_manager, watch
                         )
                         logger.info("Alertes créées avec succès")
 
-                        message_placeholder2.success(f"{len(changes_df)} changements détectés et enregistrés!")
+                        st.success(f"{len(changes_df)} changements détectés et enregistrés!")
 
                         st.subheader("Aperçu des Changements")
                         st.dataframe(changes_df.head(10), use_container_width=True)
                     else:
                         logger.info("Aucun changement détecté")
-                        message_placeholder2.info("Aucun changement détecté.")
+                        st.info("Aucun changement détecté.")
 
                 logger.info("=" * 80)
                 logger.info("FIN DU PROCESSUS DE CHARGEMENT ET AGRÉGATION - SUCCÈS")
                 logger.info("=" * 80)
-
-                # Faire disparaître les messages après 5 secondes
-                time.sleep(5)
-                message_placeholder1.empty()
-                message_placeholder2.empty()
 
             except Exception as e:
                 logger.error("=" * 80)

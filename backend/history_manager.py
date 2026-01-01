@@ -12,6 +12,7 @@ class HistoryManager:
         self.logger.info("Initialisation du HistoryManager")
         self.config = self._load_config(config_path)
         self.history_file = Path(self.config['output_files']['change_history'])
+        self.summary_history_file = Path(self.config['output_files']['summary_history'])
         self.archive_folder = Path(self.config['general']['archive_folder'])
         self.archive_old_files = self.config['general']['archive_old_files']
         self.logger.debug(f"Fichier historique: {self.history_file}")
@@ -87,3 +88,34 @@ class HistoryManager:
     def clear_history(self) -> None:
         if self.history_file.exists():
             self.history_file.unlink()
+
+    def save_summary(self, summary_df: pd.DataFrame) -> None:
+        """
+        Sauvegarde le résumé d'un chargement avec un timestamp.
+        """
+        if summary_df.empty:
+            return
+
+        summary_with_ts = summary_df.copy()
+        summary_with_ts['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        existing_summary = self.load_summary_history()
+
+        if existing_summary.empty:
+            updated_summary = summary_with_ts
+        else:
+            updated_summary = pd.concat([existing_summary, summary_with_ts], ignore_index=True)
+
+        self.summary_history_file.parent.mkdir(parents=True, exist_ok=True)
+        updated_summary.to_excel(self.summary_history_file, index=False)
+
+    def load_summary_history(self) -> pd.DataFrame:
+        """
+        Charge l'historique complet des résumés de chargement.
+        """
+        if self.summary_history_file.exists():
+            df = pd.read_excel(self.summary_history_file)
+            if 'timestamp' in df.columns:
+                return df.sort_values('timestamp', ascending=False)
+            return df
+        return pd.DataFrame()
