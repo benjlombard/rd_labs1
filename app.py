@@ -643,120 +643,93 @@ def display_update_section(data_manager, change_detector, history_manager, watch
                 else:
                     message_placeholder1.info(f"Données agrégées ({len(aggregated_df)} enregistrements). Aucun changement détecté, fichier non modifié.")
 
-                if not old_aggregated.empty:
-                    with st.spinner("Détection des changements..."):
-                        logger.info("ÉTAPE 5: Détection des changements")
-                        old_lists = {}
-                        new_lists = data_manager.load_all_lists()
-                        logger.info(f"Listes chargées: {list(new_lists.keys())}")
+                # La détection des changements est maintenant exécutée de manière inconditionnelle.
+                # Lors du premier chargement, old_aggregated est vide, et le ChangeDetector
+                # classifiera correctement tous les enregistrements comme des insertions.
+                with st.spinner("Détection des changements..."):
+                    logger.info("ÉTAPE 5: Détection des changements")
+                    
+                    # Charger les nouvelles listes à partir des fichiers sources
+                    new_lists = data_manager.load_all_lists()
+                    logger.info(f"Nouvelles listes chargées: {list(new_lists.keys())}")
 
-                        for list_name in new_lists.keys():
-                            logger.info(f"Traitement de la liste: {list_name}")
-                            old_list_data = old_aggregated[old_aggregated['source_list'] == list_name]
-                            logger.info(f"  - Anciennes données pour {list_name}: {len(old_list_data)} enregistrements")
-                            logger.info(f"  - Nouvelles données pour {list_name}: {len(new_lists[list_name])} enregistrements")
+                    # Préparer le dictionnaire des anciennes listes. Il sera vide lors du premier chargement.
+                    old_lists = {}
+                    if not old_aggregated.empty:
+                        for list_name in old_aggregated['source_list'].unique():
+                            old_lists[list_name] = old_aggregated[old_aggregated['source_list'] == list_name]
+                    
+                    logger.info("ÉTAPE 6: Détection des changements pour toutes les listes")
+                    changes_df = change_detector.detect_all_changes(old_lists, new_lists)
+                    logger.info(f"Changements détectés: {len(changes_df)} enregistrements")
 
-                            if not old_list_data.empty:
-                                # Exclure les colonnes de timestamp lors de la comparaison
-                                cols_to_drop = ['source_list', 'created_at', 'updated_at']
-                                old_list_data = old_list_data.drop(columns=[col for col in cols_to_drop if col in old_list_data.columns])
-                                logger.info(f"  - Colonnes après suppression timestamps: {len(old_list_data.columns)}")
+                    # Créer le tableau récapitulatif par liste source
+                    st.subheader("📋 Récapitulatif des Changements par Liste")
 
-                                # Éliminer les doublons de cas_id (garder la dernière occurrence)
-                                if 'cas_id' in old_list_data.columns:
-                                    before_dedup = len(old_list_data)
-                                    old_list_data = old_list_data.drop_duplicates(subset=['cas_id'], keep='last').reset_index(drop=True)
-                                    after_dedup = len(old_list_data)
-                                    logger.info(f"  - Déduplication anciennes données: {before_dedup} -> {after_dedup} ({before_dedup - after_dedup} doublons supprimés)")
-
-                                common_cols = [col for col in new_lists[list_name].columns if col in old_list_data.columns]
-                                logger.info(f"  - Colonnes communes pour comparaison: {len(common_cols)} colonnes")
-                                old_lists[list_name] = old_list_data[common_cols]
-
-                        logger.info("ÉTAPE 6: Détection des changements pour toutes les listes")
-                        changes_df = change_detector.detect_all_changes(old_lists, new_lists)
-                        logger.info(f"Changements détectés: {len(changes_df)} enregistrements")
-
-                        # Créer le tableau récapitulatif par liste source
-                        st.subheader("📋 Récapitulatif des Changements par Liste")
-
-                        summary_data = []
-                        for list_config in data_manager.config['source_files']['lists']:
-                            list_name = list_config['name']
-
-                            # Filtrer les changements pour cette liste
-                            if not changes_df.empty:
-                                list_changes = changes_df[changes_df['source_list'] == list_name]
-
-                                if not list_changes.empty:
-                                    insertions = len(list_changes[list_changes['change_type'] == 'insertion'])
-                                    modifications = len(list_changes[list_changes['change_type'] == 'modification'])
-                                    deletions = len(list_changes[list_changes['change_type'] == 'deletion'])
-
-                                    summary_data.append({
-                                        'Liste Source': list_name,
-                                        'Insertions': insertions,
-                                        'Modifications': modifications,
-                                        'Suppressions': deletions,
-                                        'Statut': '✅ Changements détectés'
-                                    })
-                                else:
-                                    summary_data.append({
-                                        'Liste Source': list_name,
-                                        'Insertions': 0,
-                                        'Modifications': 0,
-                                        'Suppressions': 0,
-                                        'Statut': '⚪ Pas de changement'
-                                    })
-                            else:
-                                summary_data.append({
-                                    'Liste Source': list_name,
-                                    'Insertions': 0,
-                                    'Modifications': 0,
-                                    'Suppressions': 0,
-                                    'Statut': '⚪ Pas de changement'
-                                })
-
-                        summary_df = pd.DataFrame(summary_data)
-                        st.dataframe(summary_df, use_container_width=True, hide_index=True)
-
-                        # Afficher les métriques de résumé
-                        st.subheader("📊 Résumé de la Mise à Jour")
-                        col1, col2, col3, col4 = st.columns(4)
+                    summary_data = []
+                    all_list_names = set(old_lists.keys()) | set(new_lists.keys())
+                    for list_name in all_list_names:
+                        list_changes = changes_df[changes_df['source_list'] == list_name] if not changes_df.empty else pd.DataFrame()
+                        insertions = len(list_changes[list_changes['change_type'] == 'insertion']) if not list_changes.empty else 0
+                        modifications = len(list_changes[list_changes['change_type'] == 'modification']) if not list_changes.empty else 0
+                        deletions = len(list_changes[list_changes['change_type'] == 'deletion']) if not list_changes.empty else 0
                         
-                        total_substances = len(aggregated_df)
-                        insertions = len(changes_df[changes_df['change_type'] == 'insertion']) if not changes_df.empty else 0
-                        deletions = len(changes_df[changes_df['change_type'] == 'deletion']) if not changes_df.empty else 0
-                        modifications = len(changes_df[changes_df['change_type'] == 'modification']) if not changes_df.empty else 0
+                        status = '⚪ Pas de changement'
+                        if insertions > 0 or modifications > 0 or deletions > 0:
+                            status = '✅ Changements détectés'
 
-                        col1.metric("Substances Traitées", total_substances)
-                        col2.metric("✅ Insertions", insertions)
-                        col3.metric("❌ Suppressions", deletions)
-                        col4.metric("✏️ Modifications", modifications)
+                        summary_data.append({
+                            'Liste Source': list_name,
+                            'Insertions': insertions,
+                            'Modifications': modifications,
+                            'Suppressions': deletions,
+                            'Statut': status
+                        })
 
-                        if not changes_df.empty:
-                            logger.info("ÉTAPE 7: Sauvegarde des changements dans l'historique")
-                            history_manager.save_changes(changes_df)
-                            logger.info(f"Historique mis à jour avec {len(changes_df)} changements")
+                    summary_df = pd.DataFrame(summary_data)
+                    st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
-                            # Créer les alertes pour les substances watchlistées
-                            logger.info("ÉTAPE 8: Création des alertes")
-                            alert_system.create_alerts_from_changes(
-                                changes_df,
-                                watchlist_manager,
-                                risk_analyzer,
-                                aggregated_df,
-                                history_manager.load_history()
-                            )
-                            logger.info("Alertes créées avec succès")
+                    # Afficher les métriques de résumé
+                    st.subheader("📊 Résumé de la Mise à Jour")
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    total_substances = len(aggregated_df)
+                    insertions = len(changes_df[changes_df['change_type'] == 'insertion']) if not changes_df.empty else 0
+                    deletions = len(changes_df[changes_df['change_type'] == 'deletion']) if not changes_df.empty else 0
+                    modifications = len(changes_df[changes_df['change_type'] == 'modification']) if not changes_df.empty else 0
+                    
+                    # Corriger le nombre d'insertions pour le premier chargement
+                    if old_aggregated.empty and total_substances > 0:
+                        insertions = total_substances
 
-                            message_placeholder2.success(f"{len(changes_df)} changements détectés et enregistrés!")
+                    col1.metric("Substances Traitées", total_substances)
+                    col2.metric("✅ Insertions", insertions)
+                    col3.metric("❌ Suppressions", deletions)
+                    col4.metric("✏️ Modifications", modifications)
 
-                            st.subheader("Aperçu des Changements")
-                            st.dataframe(changes_df.head(10), use_container_width=True)
-                        else:
-                            logger.info("Aucun changement détecté")
-                            message_placeholder2.info("Aucun changement détecté.")
+                    if not changes_df.empty:
+                        logger.info("ÉTAPE 7: Sauvegarde des changements dans l'historique")
+                        history_manager.save_changes(changes_df)
+                        logger.info(f"Historique mis à jour avec {len(changes_df)} changements")
+
+                        # Créer les alertes pour les substances watchlistées
+                        logger.info("ÉTAPE 8: Création des alertes")
+                        alert_system.create_alerts_from_changes(
+                            changes_df,
+                            watchlist_manager,
+                            risk_analyzer,
+                            aggregated_df,
+                            history_manager.load_history()
+                        )
+                        logger.info("Alertes créées avec succès")
+
+                        message_placeholder2.success(f"{len(changes_df)} changements détectés et enregistrés!")
+
+                        st.subheader("Aperçu des Changements")
+                        st.dataframe(changes_df.head(10), use_container_width=True)
+                    else:
+                        logger.info("Aucun changement détecté")
+                        message_placeholder2.info("Aucun changement détecté.")
 
                 logger.info("=" * 80)
                 logger.info("FIN DU PROCESSUS DE CHARGEMENT ET AGRÉGATION - SUCCÈS")
