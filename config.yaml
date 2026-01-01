@@ -27,31 +27,31 @@ columns:
 
   # Colonnes spécifiques à authorisation_list_full-2025-09-13.xlsx
   authorisation_list:
-    info_1: "Substance name"
-    info_2: "Description"
-    info_3: "EC number"
-    info_4: "CAS number"
-    info_5: "Entry number"
-    info_6: "Latest application date"
-    info_7: "Latest application date remarks"
-    info_8: "Sunset date"
-    info_9: "infSunset date remarkso_a_9"
-    info_10: "Reason for inclusion"
-    info_11: "Exempted (categories of) uses"
-    info_12: "Review periods"
-    info_13: "Regulatory outcome"
-    info_14: "Regulatory outcome date"
+    substance_name: "Substance name"
+    description: "Description"
+    ec_number: "EC number"
+    cas_number: "CAS number"
+    entry_number: "Entry number"
+    latest_application_date: "Latest application date"
+    latest_application_date_remarks: "Latest application date remarks"
+    sunset_date: "Sunset date"
+    sunset_date_remarks: "Sunset date remarks"
+    reason_for_inclusion: "Reason for inclusion"
+    exempted_categories_uses: "Exempted (categories of) uses"
+    review_periods: "Review periods"
+    regulatory_outcome: "Regulatory outcome"
+    regulatory_outcome_date: "Regulatory outcome date"
 
   # Colonnes spécifiques à restriction_list_full-2025-09-12.xlsx
   restriction_list:
-    info_1: "Substance name"
-    info_2: "Description"
-    info_3: "EC number"
-    info_4: "CAS number"
-    info_5: "Entry number"
-    info_6: "Conditions"
-    info_7: "Regulatory outcome"
-    info_8: "Regulatory outcome date"
+    substance_name: "Substance name"
+    description: "Description"
+    ec_number: "EC number"
+    cas_number: "CAS number"
+    entry_number: "Entry number"
+    conditions: "Conditions"
+    regulatory_outcome: "Regulatory outcome"
+    regulatory_outcome_date: "Regulatory outcome date"
 
 # Fichiers de sortie
 output_files:
