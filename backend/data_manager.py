@@ -99,7 +99,7 @@ class DataManager:
         if list_name in self.config['columns']:
             df = self._rename_list_specific_columns(df, list_name)
 
-        df['source_list'] = list_name
+        # Ne pas ajouter source_list ici, ce sera fait dans aggregate_all_data()
         self.logger.info(f"Liste {list_name} chargee avec succes: {len(df)} enregistrements")
         return df
 
@@ -174,7 +174,7 @@ class DataManager:
                     created_at_list.append(old_timestamps[key]['created_at'])
 
                     # Comparer les données (sans les colonnes de métadonnées)
-                    old_row = old_df[old_df['_key'] == key].iloc[0]
+                    old_row = old_df_unique[old_df_unique['_key'] == key].iloc[0]
 
                     # Colonnes à comparer (exclure _key, created_at, updated_at, source_list)
                     cols_to_compare = [col for col in new_df.columns
@@ -246,7 +246,13 @@ class DataManager:
     def load_aggregated_data(self) -> pd.DataFrame:
         output_path = Path(self.config['output_files']['aggregated_data'])
         if output_path.exists():
-            return pd.read_excel(output_path)
+            df = pd.read_excel(output_path)
+            # Éliminer les doublons éventuels basés sur cas_id + source_list
+            if not df.empty and 'cas_id' in df.columns and 'source_list' in df.columns:
+                df['_key'] = df['cas_id'].astype(str) + '|' + df['source_list'].astype(str)
+                df = df.drop_duplicates(subset=['_key'], keep='last').reset_index(drop=True)
+                df = df.drop(columns=['_key'])
+            return df
         return pd.DataFrame()
 
     def get_list_description(self, list_name: str) -> str:
