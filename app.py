@@ -434,17 +434,20 @@ def display_aggregated_data(data_manager, watchlist_manager, risk_analyzer, hist
             st.selectbox(
                 "Filtrer par liste source",
                 source_lists,
-                key="source_list_filter_agg"
+                key="source_list_filter_agg",
+                index=source_lists.index(st.session_state.source_list_filter_agg) if st.session_state.source_list_filter_agg in source_lists else 0
             )
+
+        # Définir le callback pour réinitialiser les filtres
+        def reset_filters_callback():
+            st.session_state.cas_name_filter_agg = ""
+            st.session_state.cas_id_filter_agg = ""
+            st.session_state.source_list_filter_agg = "Toutes"
 
         with col_btn:
             st.write("") # Spacer for vertical alignment
             st.write("") # Spacer for vertical alignment
-            if st.button("🔄 Reset Filtres"):
-                st.session_state.cas_name_filter_agg = ""
-                st.session_state.cas_id_filter_agg = ""
-                st.session_state.source_list_filter_agg = "Toutes"
-                st.rerun()
+            st.button("🔄 Reset Filtres", on_click=reset_filters_callback)
 
         filtered_df = aggregated_df.copy()
 
