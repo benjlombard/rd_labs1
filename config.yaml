@@ -12,11 +12,29 @@ source_files:
   cas_source: "cas_source.xlsx"
   lists:
     - name: "authorisation_list"
-      file: "authorisation_list_full-2025-09-13.xlsx"
+      file_pattern: "authorisation_list_full-*.xlsx"
       description: "Liste d'autorisation"
+      enabled: true
     - name: "restriction_list"
-      file: "restriction_list_full-2025-09-12.xlsx"
+      file_pattern: "restriction_list_full-*.xlsx"
       description: "Liste restriction"
+      enabled: true
+    - name: "candidate_list"
+      file_pattern: "candidate_list_full-*.xlsx"
+      description: "Liste candidate"
+      enabled: true
+    - name: "restriction_process"
+      file_pattern: "restriction_process_full-*.xlsx"
+      description: "restriction process"
+      enabled: true
+    - name: "eu_positive_list"
+      file_pattern: "eu_positive_list_full-*.xlsx"
+      description: "eu positive list"
+      enabled: false
+    - name: "clh_process"
+      file_pattern: "clh_process_full-*.xlsx"
+      description: "clh process"
+      enabled: true
 
 # Configuration des colonnes
 columns:
@@ -25,7 +43,7 @@ columns:
     cas_id: "CAS number"
     cas_name: "Substance name"
 
-  # Colonnes spécifiques à authorisation_list_full-2025-09-13.xlsx
+  # Colonnes spécifiques à authorisation_list_full
   authorisation_list:
     description: "Description"
     ec_number: "EC number"
@@ -40,7 +58,7 @@ columns:
     regulatory_outcome: "Regulatory outcome"
     regulatory_outcome_date: "Regulatory outcome date"
 
-  # Colonnes spécifiques à restriction_list_full-2025-09-12.xlsx
+  # Colonnes spécifiques à restriction_list_full
   restriction_list:
     description: "Description"
     ec_number: "EC number"
@@ -48,6 +66,99 @@ columns:
     conditions: "Conditions"
     regulatory_outcome: "Regulatory outcome"
     regulatory_outcome_date: "Regulatory outcome date"
+
+  # Colonnes spécifiques à candidate_list_full
+  candidate_list:
+    description: "Description"
+    ec_number: "EC number"
+    date_of_inclusion: "Date of inclusion"
+    reason_for_inclusion: "Reason for inclusion"
+    decision: "Decision"
+    regulatory_outcome: "Regulatory outcome"
+    regulatory_outcome_date: "Regulatory outcome date"
+
+  # Colonnes spécifiques à restriction_process_full
+  restriction_process:
+    description: "Description"
+    ec_number: "EC number"
+    current_stage: "Current stage"
+    current_stage_date: "Current stage date"
+    submitter: "Submitter(s)"
+    status: "Status"
+    details_on_the_scope_of_restriction: "Details on the scope of restriction"
+    reason_for_restriction: "Reason for restriction"
+    remarks: "Remarks"
+    timeline: "Timeline"
+    timeline_date: "Timeline date"
+    timeline_remarks: "Timeline remarks"
+    expected_date_of_submission: "Expected date of submission"
+    call_for_evidence_end_date: ""
+    first_deadline_for_comments_annex_xv_report: "1st deadline for comments on Annex XV report"
+    final_deadline_for_comments_annex_xv_report: "Final deadline for comments on Annex XV report"
+    deadline_for_comments_seac_draft_option: "Deadline for comments on SEAC draft opinion"
+    hazard_class: "Hazard class"
+    outcome_hazard: "Outcome (Hazard)"
+    description_uses: "Description (Uses)"
+    outcome_uses: "Outcome (Uses)"
+
+  # Colonnes spécifiques à eu_positive_list_full
+  eu_positive_list:
+    ec_number: "EC number"
+    eupl_number: "EUPL number"
+    material_type: "Material Type"
+    expiry_date: "Expiry date"
+    fcm_substance_number: "FCM Substance Number"
+    update_date: "Update date"
+    technical_function: "Technical function"
+    drinking_water_contact_materials: "Drinking water contact materials"
+    generic_constituent_category: "Generic constituent category"
+    mtctap_starting_substance: "MTCtap (in µg/l) for the starting substance or the organic cementitious constituent"
+    mtctap_other_relevant_chemical_species: "MTCtap (in µg/l) for other relevant chemical species"
+    mtcttap: "MTC(T)tap (in µg/l)"
+    material_category: "Material category"
+    material_sub_category: "Material sub-category"
+    metallic_composition_category: "Metallic composition category"
+    group_entry: "Group entry"
+    accepted_composition_constituents_identity: "Accepted composition constituents identity"
+    composition_constituent_min_concentration: "Composition constituent minimum concentration (% w/w)"
+    composition_constituent_max_concentration: "Composition constituent maximum concentration (% w/w)"
+    relevant_chemical_species_to_be_analysed: "Relevant chemical species to be analysed in the migration waters"
+    accepted_metallic_composition_impurities_identity: "Accepted metallic composition impurities identity"
+    composition_impurity_max_concentration: "Composition impurity maximum concentration (% w/w)"
+    relevant_product_groups: "Relevant product groups"
+    conditions_of_use: "Conditions of use"
+
+# Colonnes spécifiques à clh_process_full
+  clh_process:
+    ec_number: "EC number"
+    current_stage: "Current stage"
+    current_stage_date: "Current stage date"
+    submitters: "Submitter(s)"
+    regulatory_programme: "Regulatory programme"
+    further_substance_information: "Further substance information"
+    status: "Status"
+    submitter_email: "Submitter's email"
+    harmonised_classification_at_proposal: "Harmonised classification at the time of proposal"
+    additional_harmonised_elements_at_proposal: "Additional harmonised elements at the time of proposal"
+    harmonised_classification_proposed: "Harmonised classification proposed by the dossier submitter"
+    additional_harmonised_elements_proposed: "Additional harmonised elements proposed by the dossier submitter"
+    atp_number_and_date: "ATP number and date"
+    remarks: "Remarks"
+    timeline: "Timeline"
+    timeline_date: "Timeline date"
+    timeline_remarks: "Timeline remarks"
+    expected_submission_date: "Expected date of submission"
+    legal_deadline_opinion_adoption: "Legal deadline for opinion adoption"
+    deadline_comments_start: "Deadline for comments (start)"
+    deadline_comments_targeted: "Deadline for comments (targeted)"
+    hazard_classes_open_for_commenting: "Hazard classes open for commenting"
+    rac_opinion_publication_date: "Date RAC opinion was published on ECHA website"
+    adopted_rac_opinion_classification: "Adopted RAC opinion harmonised classification"
+    adopted_rac_opinion_additional_elements: "Adopted RAC opinion additional harmonised elements"
+    hazard_class: "Hazard Class"
+    hazard_category: "Hazard category"
+    hazard_statement_m_factor: "Hazard statement M-factor"
+    additional_specifications: "Additional specifications"
 
 # Fichiers de sortie
 output_files:

@@ -99,87 +99,6 @@ class DataManager:
 
         return df
 
-    def _find_file_by_pattern(self, list_config: dict) -> Path:
-        """
-        Trouve le fichier correspondant au pattern ou au nom exact
-        
-        Args:
-            list_config: Configuration de la liste (doit contenir 'file_pattern' ou 'file')
-            
-        Returns:
-            Path du fichier trouvé
-            
-        Raises:
-            FileNotFoundError: Si aucun fichier ne correspond
-        """
-        input_folder = self.data_folder / "input"
-        
-        self.logger.info(f"    _find_file_by_pattern() - Recherche dans: {input_folder.absolute()}")
-        self.logger.info(f"    Dossier existe: {input_folder.exists()}")
-        
-        # Priorité 1 : Utiliser file_pattern si disponible
-        if 'file_pattern' in list_config:
-            pattern = list_config['file_pattern']
-            self.logger.info(f"    Méthode: file_pattern = '{pattern}'")
-            
-            # Utiliser glob pour trouver les fichiers correspondants
-            matching_files = list(input_folder.glob(pattern))
-            self.logger.info(f"    Fichiers trouvés avec glob('{pattern}'): {len(matching_files)}")
-            
-            if matching_files:
-                for f in matching_files:
-                    self.logger.info(f"      - {f.name}")
-            
-            if not matching_files:
-                # Lister tous les fichiers du dossier pour debug
-                all_files = list(input_folder.glob("*.xlsx"))
-                self.logger.error(f"    Aucun fichier trouvé pour le pattern: {pattern}")
-                self.logger.error(f"    Fichiers .xlsx présents dans {input_folder}: {[f.name for f in all_files]}")
-                raise FileNotFoundError(f"Aucun fichier ne correspond au pattern '{pattern}' dans {input_folder}")
-            
-            # Si plusieurs fichiers, prendre le plus récent (par date de modification)
-            if len(matching_files) > 1:
-                matching_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-                self.logger.info(f"Plusieurs fichiers trouvés pour '{pattern}', utilisation du plus récent: {matching_files[0].name}")
-            
-            selected_file = matching_files[0]
-            self.logger.info(f"Fichier sélectionné: {selected_file.name}")
-            return selected_file
-        
-        # Priorité 2 : Utiliser file_prefix si disponible
-        elif 'file_prefix' in list_config:
-            prefix = list_config['file_prefix']
-            self.logger.debug(f"Recherche de fichiers avec le préfixe: {prefix}")
-            
-            # Trouver tous les fichiers commençant par le préfixe
-            matching_files = [f for f in input_folder.glob(f"{prefix}*.xlsx") if f.is_file()]
-            
-            if not matching_files:
-                self.logger.error(f"Aucun fichier trouvé avec le préfixe: {prefix}")
-                raise FileNotFoundError(f"Aucun fichier ne commence par '{prefix}' dans {input_folder}")
-            
-            # Prendre le plus récent
-            if len(matching_files) > 1:
-                matching_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-                self.logger.info(f"Plusieurs fichiers trouvés avec '{prefix}', utilisation du plus récent: {matching_files[0].name}")
-            
-            selected_file = matching_files[0]
-            self.logger.info(f"Fichier sélectionné: {selected_file.name}")
-            return selected_file
-        
-        # Priorité 3 : Utiliser le nom exact (legacy)
-        elif 'file' in list_config:
-            file_path = input_folder / list_config['file']
-            if not file_path.exists():
-                self.logger.error(f"Fichier non trouvé: {file_path}")
-                raise FileNotFoundError(f"Le fichier '{list_config['file']}' n'existe pas dans {input_folder}")
-            
-            self.logger.debug(f"Utilisation du nom de fichier exact: {file_path.name}")
-            return file_path
-        
-        else:
-            raise ValueError(f"Configuration invalide: ni 'file_pattern', ni 'file_prefix', ni 'file' spécifié")
-
     def load_list_file(self, list_name: str) -> pd.DataFrame:
         self.logger.debug(f"Chargement de la liste: {list_name}")
         list_config = next((l for l in self.config['source_files']['lists'] if l['name'] == list_name), None)
@@ -187,21 +106,9 @@ class DataManager:
             self.logger.error(f"Liste {list_name} non trouvee dans la configuration")
             raise ValueError(f"Liste {list_name} non trouvée dans la configuration")
 
-        # Trouver le fichier correspondant (pattern, prefix, ou nom exact)
-        try:
-            file_path = self._find_file_by_pattern(list_config)
-        except FileNotFoundError as e:
-            self.logger.error(str(e))
-            raise
-        
+        file_path = self.data_folder / "input" / list_config['file']
         self.logger.debug(f"Lecture du fichier: {file_path}")
-        
-        # Cas particulier pour eu_positive_list : les vraies colonnes commencent à la ligne 2 (index 1)
-        if list_name == 'eu_positive_list':
-            self.logger.info(f"Liste {list_name}: utilisation de header=1 (ligne 2) car le fichier a des métadonnées en ligne 1")
-            df = pd.read_excel(file_path, header=1)
-        else:
-            df = pd.read_excel(file_path)
+        df = pd.read_excel(file_path)
 
         # Renommer les colonnes communes selon la configuration
         df = self._rename_common_columns(df)
@@ -246,73 +153,15 @@ class DataManager:
         return df
 
     def load_all_lists(self) -> Dict[str, pd.DataFrame]:
-        """
-        Charge toutes les listes activées depuis les fichiers sources
-        
-        Returns:
-            Dictionnaire {nom_liste: DataFrame}
-        """
-        self.logger.info("=" * 60)
-        self.logger.info("DÉBUT DE load_all_lists()")
-        self.logger.info("=" * 60)
-        
         all_lists = {}
-        total_lists = len(self.config['source_files']['lists'])
-        self.logger.info(f"Nombre total de listes dans config: {total_lists}")
-        
-        for idx, list_config in enumerate(self.config['source_files']['lists'], 1):
+        for list_config in self.config['source_files']['lists']:
             list_name = list_config['name']
-            
-            # Vérifier si la liste est activée (par défaut True si non spécifié)
-            is_enabled = list_config.get('enabled', True)
-            
-            self.logger.info(f"[{idx}/{total_lists}] Liste: {list_name}")
-            self.logger.info(f"  - Enabled: {is_enabled}")
-            
-            if not is_enabled:
-                self.logger.info(f"  - ⏸️ Liste {list_name} désactivée dans la configuration, ignorée")
-                continue
-            
-            try:
-                self.logger.info(f"  - Tentative de chargement...")
-                df = self.load_list_file(list_name)
-                all_lists[list_name] = df
-                self.logger.info(f"  - ✅ Chargement réussi: {len(df)} enregistrements")
-            except FileNotFoundError as e:
-                self.logger.error(f"  - ❌ Fichier non trouvé pour {list_name}: {e}")
-                raise  # Relancer l'exception pour arrêter le processus
-            except Exception as e:
-                self.logger.error(f"  - ❌ Erreur lors du chargement de {list_name}: {e}")
-                self.logger.exception("Traceback complet:")
-                raise  # Relancer l'exception pour arrêter le processus
-        
-        self.logger.info("=" * 60)
-        self.logger.info(f"✅ FIN DE load_all_lists() - {len(all_lists)} listes activées chargées")
-        self.logger.info(f"Listes chargées: {list(all_lists.keys())}")
-        self.logger.info("=" * 60)
-        
+            all_lists[list_name] = self.load_list_file(list_name)
         return all_lists
 
-    def aggregate_all_data(self, preloaded_lists: Dict[str, pd.DataFrame] = None) -> pd.DataFrame:
-        """
-        Agrège toutes les listes en un seul DataFrame
-        
-        Args:
-            preloaded_lists: Dictionnaire optionnel de listes déjà chargées.
-                           Si None, les listes seront chargées depuis les fichiers.
-        
-        Returns:
-            DataFrame agrégé avec toutes les substances
-        """
+    def aggregate_all_data(self) -> pd.DataFrame:
         self.logger.info("Debut de l'agregation de toutes les listes")
-        
-        # Utiliser les listes préchargées si fournies, sinon charger depuis les fichiers
-        if preloaded_lists is not None:
-            self.logger.info(f"Utilisation des listes préchargées: {list(preloaded_lists.keys())}")
-            all_lists = preloaded_lists
-        else:
-            self.logger.info("Chargement des listes depuis les fichiers")
-            all_lists = self.load_all_lists()
+        all_lists = self.load_all_lists()
 
         aggregated_frames = []
         for list_name, df in all_lists.items():
@@ -569,23 +418,18 @@ class DataManager:
         if not list_config:
             return "N/A"
 
-        try:
-            file_path = self._find_file_by_pattern(list_config)
-            if not file_path.exists():
-                return "Fichier non trouvé"
-
-            mod_timestamp = os.path.getmtime(file_path)
-            mod_date = datetime.fromtimestamp(mod_timestamp)
-            return mod_date.strftime('%Y-%m-%d %H:%M:%S')
-        except (FileNotFoundError, ValueError) as e:
-            self.logger.warning(f"Impossible de trouver le fichier pour {list_name}: {e}")
+        file_path = self.data_folder / "input" / list_config['file']
+        if not file_path.exists():
             return "Fichier non trouvé"
+
+        mod_timestamp = os.path.getmtime(file_path)
+        mod_date = datetime.fromtimestamp(mod_timestamp)
+        return mod_date.strftime('%Y-%m-%d %H:%M:%S')
 
     def archive_source_files(self) -> int:
         """
-        Archive tous les fichiers Excel sources activés en les déplaçant vers data/archives
+        Archive tous les fichiers Excel sources en les déplaçant vers data/archives
         avec un timestamp dans le nom du fichier.
-        PUIS supprime les fichiers sources de data/input/ (sauf cas_source.xlsx)
         Retourne le nombre de fichiers archivés.
         """
         self.logger.info("Debut de l'archivage des fichiers sources")
@@ -594,127 +438,25 @@ class DataManager:
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         archived_count = 0
-        files_to_delete = []  # Liste des fichiers à supprimer après archivage
 
         for list_config in self.config['source_files']['lists']:
             list_name = list_config['name']
-            
-            # Vérifier si la liste est activée (par défaut True si non spécifié)
-            is_enabled = list_config.get('enabled', True)
-            
-            if not is_enabled:
-                self.logger.info(f"Liste {list_name} désactivée, pas d'archivage")
-                continue
-            
-            try:
-                # Trouver le fichier en utilisant pattern, prefix ou nom exact
-                file_path = self._find_file_by_pattern(list_config)
-                
-                if file_path.exists():
-                    # Créer le nom du fichier archivé avec timestamp
-                    file_stem = file_path.stem  # Nom sans extension
-                    file_ext = file_path.suffix  # Extension avec le point
-                    archive_name = f"{file_stem}_{timestamp}{file_ext}"
-                    archive_path = archive_folder / archive_name
+            list_file = list_config['file']
+            file_path = self.data_folder / "input" / list_file
 
-                    # Copier le fichier vers archives
-                    shutil.copy2(str(file_path), str(archive_path))
-                    self.logger.info(f"Fichier archive (copie): {file_path.name} -> {archive_name}")
-                    archived_count += 1
-                    
-                    # Ajouter à la liste des fichiers à supprimer
-                    files_to_delete.append(file_path)
-                else:
-                    self.logger.warning(f"Fichier source non trouve: {file_path}")
-            
-            except (FileNotFoundError, ValueError) as e:
-                # Ne pas logger comme warning si fichiers déjà archivés
-                self.logger.debug(f"Fichier {list_name} déjà archivé ou introuvable: {e}")
+            if file_path.exists():
+                # Créer le nom du fichier archivé avec timestamp
+                file_stem = file_path.stem  # Nom sans extension
+                file_ext = file_path.suffix  # Extension avec le point
+                archive_name = f"{file_stem}_{timestamp}{file_ext}"
+                archive_path = archive_folder / archive_name
 
-        # Supprimer les fichiers sources après archivage (sauf cas_source.xlsx)
-        deleted_count = 0
-        for file_path in files_to_delete:
-            try:
-                file_path.unlink()  # Supprime le fichier
-                self.logger.info(f"Fichier source supprime: {file_path.name}")
-                deleted_count += 1
-            except Exception as e:
-                self.logger.error(f"Erreur lors de la suppression de {file_path.name}: {e}")
+                # Copier le fichier (au lieu de déplacer pour garder l'original)
+                shutil.copy2(str(file_path), str(archive_path))
+                self.logger.info(f"Fichier archive (copie): {list_file} -> {archive_name}")
+                archived_count += 1
+            else:
+                self.logger.warning(f"Fichier source non trouve: {file_path}")
 
-        self.logger.info(f"Archivage termine: {archived_count} fichiers archives, {deleted_count} fichiers supprimes")
+        self.logger.info(f"Archivage termine: {archived_count} fichiers archives")
         return archived_count
-    
-    def get_detected_files_info(self) -> list:
-        """
-        Retourne les informations sur les fichiers détectés pour chaque liste
-        Utile pour afficher dans l'interface utilisateur
-        
-        Returns:
-            Liste de dictionnaires avec les infos de chaque fichier détecté
-        """
-        files_info = []
-        
-        for list_config in self.config['source_files']['lists']:
-            list_name = list_config['name']
-            is_enabled = list_config.get('enabled', True)
-            
-            # Si la liste est désactivée, l'indiquer directement
-            if not is_enabled:
-                files_info.append({
-                    'list_name': list_name,
-                    'description': list_config.get('description', list_name),
-                    'file_name': 'N/A',
-                    'file_path': 'N/A',
-                    'last_modified': 'N/A',
-                    'size_mb': 0,
-                    'enabled': False,
-                    'status': '⏸️ DÉSACTIVÉE'
-                })
-                continue
-            
-            try:
-                file_path = self._find_file_by_pattern(list_config)
-                
-                # Obtenir les métadonnées du fichier
-                mod_timestamp = os.path.getmtime(file_path)
-                mod_date = datetime.fromtimestamp(mod_timestamp)
-                file_size = file_path.stat().st_size / (1024 * 1024)  # Taille en MB
-                
-                files_info.append({
-                    'list_name': list_name,
-                    'description': list_config.get('description', list_name),
-                    'file_name': file_path.name,
-                    'file_path': str(file_path),
-                    'last_modified': mod_date.strftime('%Y-%m-%d %H:%M:%S'),
-                    'size_mb': round(file_size, 2),
-                    'enabled': True,
-                    'status': '✅ OK'
-                })
-                
-            except FileNotFoundError as e:
-                files_info.append({
-                    'list_name': list_name,
-                    'description': list_config.get('description', list_name),
-                    'file_name': 'N/A',
-                    'file_path': 'N/A',
-                    'last_modified': 'N/A',
-                    'size_mb': 0,
-                    'enabled': True,
-                    'status': '❌ Fichier non trouvé',
-                    'error': str(e)
-                })
-            
-            except Exception as e:
-                files_info.append({
-                    'list_name': list_name,
-                    'description': list_config.get('description', list_name),
-                    'file_name': 'N/A',
-                    'file_path': 'N/A',
-                    'last_modified': 'N/A',
-                    'size_mb': 0,
-                    'enabled': True,
-                    'status': f'❌ ERREUR: {str(e)}',
-                    'error': str(e)
-                })
-        
-        return files_info

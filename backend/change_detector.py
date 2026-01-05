@@ -13,6 +13,29 @@ class ChangeDetector:
     def detect_changes_for_list(self, old_df: pd.DataFrame, new_df: pd.DataFrame, list_name: str) -> pd.DataFrame:
         changes = []
 
+        # Log des colonnes disponibles pour diagnostic
+        if not new_df.empty:
+            self.logger.debug(f"Liste {list_name} - Colonnes new_df: {list(new_df.columns)}")
+        if not old_df.empty:
+            self.logger.debug(f"Liste {list_name} - Colonnes old_df: {list(old_df.columns)}")
+
+        # Vérifier que les colonnes essentielles sont présentes
+        required_columns = ['cas_id', 'cas_name']
+        
+        if not new_df.empty:
+            missing_cols = [col for col in required_columns if col not in new_df.columns]
+            if missing_cols:
+                self.logger.error(f"Colonnes manquantes dans new_df pour {list_name}: {missing_cols}")
+                self.logger.error(f"Colonnes disponibles: {list(new_df.columns)}")
+                raise KeyError(f"Colonnes manquantes dans les nouvelles données pour {list_name}: {missing_cols}. Vérifiez que le fichier Excel source contient bien les colonnes 'CAS number' et 'Substance name'.")
+        
+        if not old_df.empty:
+            missing_cols = [col for col in required_columns if col not in old_df.columns]
+            if missing_cols:
+                self.logger.error(f"Colonnes manquantes dans old_df pour {list_name}: {missing_cols}")
+                self.logger.error(f"Colonnes disponibles: {list(old_df.columns)}")
+                raise KeyError(f"Colonnes manquantes dans les anciennes données pour {list_name}: {missing_cols}")
+
         if old_df.empty:
             for _, row in new_df.iterrows():
                 changes.append(self._create_change_record('insertion', list_name, row, None))
@@ -61,12 +84,24 @@ class ChangeDetector:
 
     def _create_change_record(self, change_type: str, list_name: str, new_row: pd.Series = None,
                             old_row: pd.Series = None, modified_fields: List[str] = None) -> dict:
+        # Déterminer quelle ligne utiliser pour extraire cas_id et cas_name
+        row_to_use = new_row if new_row is not None else old_row
+        
+        if row_to_use is None:
+            raise ValueError(f"Impossible de créer un enregistrement de changement: new_row et old_row sont tous les deux None")
+        
+        # Vérifier que les colonnes existent
+        if 'cas_id' not in row_to_use.index:
+            raise KeyError(f"Colonne 'cas_id' manquante dans la ligne. Colonnes disponibles: {list(row_to_use.index)}")
+        if 'cas_name' not in row_to_use.index:
+            raise KeyError(f"Colonne 'cas_name' manquante dans la ligne. Colonnes disponibles: {list(row_to_use.index)}")
+        
         record = {
             'change_type': change_type,
             'source_list': list_name,
             'timestamp': datetime.now().isoformat(),
-            'cas_id': new_row['cas_id'] if new_row is not None else old_row['cas_id'],
-            'cas_name': new_row['cas_name'] if new_row is not None else old_row['cas_name']
+            'cas_id': row_to_use['cas_id'],
+            'cas_name': row_to_use['cas_name']
         }
 
         if change_type == 'insertion' and new_row is not None:

@@ -1,0 +1,11 @@
+{
+  "column_selection": {
+    "profile": "dates",
+    "custom_columns": null
+  },
+  "filters": {},
+  "display_options": {
+    "rows_per_page": 50,
+    "show_index": false
+  }
+}
